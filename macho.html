@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Mach-O Parser</title>
+	<style type="text/css">
+	* {
+		font-family: 'Courier New', 'Console';
+	}
+
+	input[type='file']::before {
+	  content: 'Select some files';
+	  display: inline-block;
+	  background: black;
+	  color: #ffffff;
+	  border: 1px solid #999;
+	  border-radius: 3px;
+	  padding: 5px 8px;
+	  outline: none;
+	  white-space: nowrap;
+	  -webkit-user-select: none;
+	  cursor: pointer;
+	  font-weight: 700;
+	  font-size: 10pt;
+	}
+
+	input[type='file']:hover::before {
+	  border-color: black;
+	  outline: none;
+	}
+	input[type='file']:active::before {
+	  background: silver;
+	  outline: none;
+	}
+
+	input[type='file']::-webkit-file-upload-button {
+		visibility: hidden;
+		width: 0px;
+		height: 0px;
+		outline: none;
+	}
+
+	.hidden {
+		display: none;
+	}
+	ul.tree, ul.tree ul {
+		list-style-type: none;
+		margin: 0;
+		padding: 0;
+   } 
+   
+   ul.tree ul {
+    	margin-left: 10px;
+   }
+   
+   ul.tree li {
+    	margin: 0;
+    	padding: 0 7px;
+    	line-height: 20px;
+    	color: #369;
+    	font-weight: bold;
+    	border-left:1px solid rgb(100,100,100);
+   }
+
+   ul.tree li:last-child {
+       border-left:none;
+   }
+   
+   ul.tree li::before {
+    	position:relative;
+    	top:-0.3em;
+    	height:1em;
+    	width:12px;
+    	color:white;
+    	border-bottom:1px solid rgb(100,100,100);
+    	content:"";
+    	display:inline-block;
+    	left:-7px;
+   }
+
+   ul.tree li:last-child::before {
+   		border-left:1px solid rgb(100,100,100);   
+   }
+   textarea {
+   		background: #e4e4e4;
+   		color: #000000;
+   		outline: none;
+   		font-family: 'Courier New', 'Console';
+   		width: 100%;
+   		min-height: 100px;
+   		border: 0px;
+   }
+</style>
+</head>
+<body>
+	<center>
+		<br/>
+		<img src="gandalf.png" height="100px"/>
+	</center>
+	<h1>Mach-O Parser</h1>
+	<p>Special thanks to @kudima and @saelo, improved by @userlandkernel.</p>
+	<br/>
+	<input type="file" placeholder="Upload Mach-O File...." id='file'><br/>
+	<br/>
+	<section id="macho-utils" class="hidden">
+		<input type="text" id="symname" placeholder="symbol name (e.g _kprintf)..." value=""/>
+		<button id="findsym">Find</button><button id="download">Download</button>
+		<br/>
+		<br/>
+		<h3>Segments</h3>
+		<textarea id="segments">
+			
+		</textarea>
+		<h3>Sections</h3>
+		<textarea id="sections">
+			
+		</textarea>
+		<h3>Symbols</h3>
+		<textarea id="symbols">
+			
+		</textarea>
+		<h3>Disassembly</h3>
+		<textarea id="disasm">
+			
+		</textarea>
+	</section>
+
+	<script type="text/javascript" src="capstone.min.js"></script>
+	<script type="text/javascript" src="int64.js"></script>
+	<script type="text/javascript" src="ibin.js"></script>
+	<script type="text/javascript" src="constants.js"></script>
+	<script type="text/javascript" src="macho.js"></script>
+	<script type="text/javascript">
+		var stdin = document.getElementById('file');
+		var stdout = {};
+		stdout.context = document.getElementById('macho-utils');
+		stdout.symbols = document.getElementById('symbols');
+		stdout.segments = document.getElementById('segments');
+		stdout.sections = document.getElementById('sections');
+		stdout.disasm = document.getElementById('disasm');
+		stdout.downloadbtn = document.getElementById('download');
+
+		var performMachoAnalysis = function() {
+
+			var filename = stdin.files[0].name;
+			var freader = new FileReader();
+
+			var updateUI = function(mtool)
+			{
+				stdout.context.removeAttribute('class');
+				stdout.disasm.value = mtool.instructions;
+				stdout.segments.value = mtool.segments;
+				stdout.symbols.value = mtool.symbols;
+				stdout.sections.value = mtool.sections;
+			};
+			
+			freader.onload = function() {
+				var buf = new Uint8Array(this.result);
+				window.mtool = new MachoTool(filename, buf);
+				stdout.downloadbtn.onclick = function(){window.mtool.download();};
+				mtool.disasm();
+				updateUI(mtool);
+				//mtool = undefined;
+				//buf = undefined;
+			};
+
+			freader.readAsArrayBuffer(this.files[0]);
+		};
+
+		window.onload = function(e)
+		{
+			stdin.addEventListener('change', performMachoAnalysis, false);
+		};
+	</script>
+
+</body>
+</html>
