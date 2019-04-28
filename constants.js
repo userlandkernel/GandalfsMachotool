@@ -1,3 +1,5 @@
+/* Data Size constants */
+
 
 /* Mach-O Magic Numbers */
 var MH_MAGIC = 0xfeedface;

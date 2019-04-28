@@ -1,119 +1,12 @@
-var RWView = function RWView(buffer, byteOffset, byteLength)
+/*
+ * MachO javascript
+ * Written by Kudima, extended by Sem Voigtländer.
+*/
+
+function lastbit(n)
 {
-	this.buffer = buffer;
-	this.byteOffset = byteOffset;
-	this.byteLength = byteLength;
-};
-
-RWView.prototype.getInt8 = function(byteOffset = 0, littleEndian = false){
-	var i8 = new Int8Array(this.buffer);
-	return i8[byteOffset];
-};
-
-RWView.prototype.getUint8 = function(byteOffset = 0, littleEndian = false){
-	var u8 = new Uint8Array(this.buffer);
-	return u8[byteOffset];
-};
-
-RWView.prototype.getInt16 = function(byteOffset = 0, littleEndian = false){
-	var i16 = new Int16Array(this.buffer);
-	return i16[Math.floor(byteOffset/2)];
-};
-
-RWView.prototype.getUint16 = function(byteOffset = 0, littleEndian = false){
-	var u16 = new Uint16Array(this.buffer);
-	return u16[Math.floor(byteOffset/2)];
-};
-
-RWView.prototype.getInt32 = function(byteOffset = 0, littleEndian = false){
-	var i32 = new Int32Array(this.buffer);
-	return i32[Math.floor(byteOffset/4)];
-};
-
-RWView.prototype.getUint32 = function(byteOffset = 0, littleEndian = false)
-{
-	var u32 = new Uint32Array(this.buffer);
-	return u32[Math.floor(byteOffset/4)];
-};
-
-RWView.prototype.getFloat32 = function(byteOffset = 0, littleEndian = false)
-{
-	var f32 = new Float32Array(this.buffer);
-	return f32[Math.floor(byteOffset/4)];
-};
-
-RWView.prototype.getFloat64 = function(byteOffset = 0, littleEndian = false)
-{
-	var f64 = new Float64Array(this.buffer);
-	return f64[Math.floor(byteOffset/8)];
-};
-
-RWView.prototype.getInt64 = function(byteOffset = 0, littleEndian = false)
-{
-	byteOffset = byteOffset*8; // 8
-	var b1 = new Uint8Array(this.buffer)[byteOffset];
-	var b2 = new Uint8Array(this.buffer)[byteOffset+1];
-	var b3 = new Uint8Array(this.buffer)[byteOffset+2];
-	var b4 = new Uint8Array(this.buffer)[byteOffset+3];
-	var b5 = new Uint8Array(this.buffer)[byteOffset+4];
-	var b6 = new Uint8Array(this.buffer)[byteOffset+5];
-	var b7 = new Uint8Array(this.buffer)[byteOffset+6];
-	var b8 = new Uint8Array(this.buffer)[byteOffset+7];
-	//8 bytes, one byte is 8 bits. 8 times 8 equals 64 bits in total.
-	return new Int64([b1, b2, b3, b4, b5, b6, b7, b8]);
-};
-
-RWView.prototype.setInt8 = function(byteOffset = 0, value = 0, littleEndian = false)
-{
-	new Int8Array(this.buffer)[byteOffset] = value;
-};
-
-RWView.prototype.setUint8 = function(byteOffset = 0, value = 0, littleEndian = false)
-{
-	new Uint8Array(this.buffer)[byteOffset] = value;
-};
-
-RWView.prototype.setInt16 = function(byteOffset = 0, value = 0, littleEndian = false)
-{
-	new Int16Array(this.buffer)[Math.floor(byteOffset/2)] = value;
-};
-
-RWView.prototype.setUint16 =function(byteOffset = 0, value = 0, littleEndian = false)
-{
-	new Uint16Array(this.buffer)[Math.floor(byteOffset/2)] = value;
-};
-
-RWView.prototype.setInt32 = function(byteOffset = 0, value = 0, littleEndian = false)
-{
-	new Int32Array(this.buffer)[Math.floor(byteOffset/4)] = value;
-};
-
-RWView.prototype.setUint32 = function(byteOffset = 0, value = 0, littleEndian = false)
-{
-	new Uint32Array(this.buffer)[Math.floor(byteOffset/4)] = value;
-};
-
-RWView.prototype.setFloat32 = function(byteOffset = 0, value = 0, littleEndian = false)
-{
-	new Float32Array(this.buffer)[Math.floor(byteOffset/4)] = value;
-};
-
-RWView.prototype.setFloat64 = function(byteOffset = 0, value = 0, littleEndian = false)
-{
-	new Float64Array(this.buffer)[Math.floor(byteOffset/8)] = value;
-};
-
-RWView.prototype.setInt64 = function(byteOffset = 0, value = 0, littleEndian = false)
-{
-	if(!(value instanceof Int64)) {
-		value = new Int64(value);
-	}
-
-	var bytes = value.getBytes();
-	for(i = 0; i< bytes.length; i++) {
-		new Int8Array(this.buffer)[i] = bytes[i];
-	}
-};
+	return parseInt('0x'+n.toString(16)[n.toString(16).length-1]);
+}
 
 function MachOException(msg = '') {
 	this.message = msg.toString(16);
@@ -131,42 +24,42 @@ var MachoReader = function(data) {
 MachoReader.prototype.getUint32 = function () {
 	this.pos += 4;
 	return this.view.getUint32(this.pos - 4, true);
-}
+};
 
 MachoReader.prototype.getUint16 = function () {
 	this.pos += 2;
 	return this.view.getUint16(this.pos - 2, true);
-}
+};
 
 MachoReader.prototype.getUint8 = function () {
 	this.pos += 1;
 	return this.view.getUint8(this.pos - 1, true);
-}
+};
 
 MachoReader.prototype.getF64 = function () {
 	this.pos += 8;
 	return Int64.fromDouble(this.view.getFloat64(this.pos - 8, true));
-}
+};
 
 MachoReader.prototype.getBlob = function(size) {
 	this.pos += size;
 	var result = this.data.slice(this.pos - size, this.pos);
 	return result;
-}
+};
 
 MachoReader.prototype.getBlobAtOffset = function(offset, size) {
 
 	var result = this.data.slice(offset, offset + size);
 	return result;
-}
+};
 
 MachoReader.prototype.atU8 = function(pos=0) {
 	return this.view.getUint8(this.pos + pos);
-}
+};
 
 MachoReader.prototype.reset = function(pos) {
 	this.pos = pos;
-}
+};
 
 function lshiftU32Array(u32arr, shift) {
 
@@ -208,7 +101,7 @@ MachoReader.prototype.F64uleb128 = function () {
 	}
 
 	return result;
-}
+};
 
 MachoReader.prototype.U32uleb128 = function () {
 
@@ -226,11 +119,11 @@ MachoReader.prototype.U32uleb128 = function () {
 	}
 
 	return result;
-}
+};
 
 MachoReader.prototype.bytesLeft = function () {
 	return this.data.length - this.pos;
-}
+};
 
 // read a null-terminated string
 MachoReader.prototype.getStr = function() {
@@ -241,7 +134,7 @@ MachoReader.prototype.getStr = function() {
 	this.pos = end+1;
 
 	return String.fromCharCode(...arr);
-}
+};
 
 MachoReader.prototype.getStrAt = function(pos) {
 
@@ -249,15 +142,21 @@ MachoReader.prototype.getStrAt = function(pos) {
 
 	let arr = Array.from(this.data.slice(pos, end));
 	return String.fromCharCode(...arr);
-}
+};
 
 MachoReader.prototype.skip = function(len) {
 	this.pos += len;
-}
+};
 
 MachoReader.prototype.move = function (pos) {
 	this.pos = pos;
-}
+};
+
+MachoReader.prototype.writeString = function(off = 0, str = '' )
+{
+	var temp = new TextEncoder().encode(str);
+	this.data.set(temp, off);
+};
 
 // MachO structs
 var MachO_LC = function (reader) {
@@ -760,7 +659,7 @@ MachO.prototype.findSym = function(sym = '')
 	}
 	for(i = 0; i < this.symtab.nsyms; i++) {
 		var entry = this.symtab.nlists[i];
-		if(entry.name == sym) {
+		if(entry.name == sym && entry.n_type == 15) {
 			return entry.n_value;
 		}
 	}
@@ -770,27 +669,35 @@ MachO.prototype.findSym = function(sym = '')
 MachO.prototype.guessSyms = function()
 {
 	var syms = new Array();
-	if(!this.header)
-	{
-		this.parseHeader();
-	}
-	if(!this.symtab){
-		this.get_SYMTAB();
-	}
-	if(!this.symtab.nlists)
-	{
-		this.symtab.loadSymbols(this.data);
-	}
-	if(!this.symtab.strings)
-	{
-		this.symtab.loadStrings(this);
-	}
-	for(i = 0; i < this.symtab.nsyms; i++) {
-		var entry = this.symtab.nlists[i];
-		if(entry.name && entry.n_value)
+
+	try {
+
+		if(!this.header)
 		{
-			syms.push({name: entry.name, off: entry.n_value});
+			this.parseHeader();
 		}
+		if(!this.symtab){
+			this.get_SYMTAB();
+		}
+		if(!this.symtab.nlists)
+		{
+			this.symtab.loadSymbols(this.data);
+		}
+		if(!this.symtab.strings)
+		{
+			this.symtab.loadStrings(this);
+		}
+		for(i = 0; i < this.symtab.nsyms; i++) {
+			var entry = this.symtab.nlists[i];
+			if(entry.name && entry.n_value && (entry.n_type == 15))
+			{
+				syms.push({name: entry.name, off: entry.n_value});
+			}
+		}
+	} 
+	catch(err)
+	{
+		console.error("Failed to guess syms: "+err.message);
 	}
 	return syms;
 	
@@ -837,74 +744,151 @@ MachO.prototype.findCodeSegment = function()
 
 var MachoTool = function MachoTool(filename = '', buffer = new ArrayBuffer())
 {
-	this.filename = filename;
-	this.macho = new MachO(buffer);
-	this.macho.parseHeader();
-	this.macho.getSegments();
-	this.symbols = '';
-	this.sections = '';
+	this.filename = filename; // The filename as provided from the input element
+	this.macho = new MachO(buffer); // A new macho instance from the data in the arraybuffer
+	this.macho.parseHeader(); // Try to parse the header
+	this.macho.getSegments(); // Try to get the segments
+	this.symbols = ''; // Cache of symbols
+	this.sections = ''; // Cache of sections
 
+	// Load and guess all symbols
 	var _syms = this.macho.guessSyms();
 	for(i = 0; i < _syms.length; i++)
 	{
-		this.symbols += '#define '+_syms[i].name +' '+_syms[i].off.toString(16)+'\n';
+		if(_syms[i].off.toString(16) != '0x0000000000000000')
+		{
+			this.symbols += '#define '+_syms[i].name +' '+_syms[i].off.toString(16)+'\n';
+		}
 	}
 
 	// Gets the sectons and segments
 	for(i = 0; i < this.macho.segments.length; i++){
-			if(!this.segments) {
-				this.segments = '';
-			}
-			this.segments += this.macho.segments[i].segname+': '+this.macho.segments[i].vmaddr.toString(16)+'\n';
-			for(j = 0; j < this.macho.segments[i].sections.length; j++){
-				if(!this.sections)
-				{
-					this.sections = '';
-				}
-				this.sections+=(this.macho.segments[i].segname+"."+this.macho.segments[i].sections[j].sectname +': '+this.macho.segments[i].sections[j].addr.toString(16)+'\n');
-			}
+		if(!this.segments) {
+			this.segments = '';
 		}
+		this.segments += this.macho.segments[i].segname+': '+this.macho.segments[i].vmaddr.toString(16)+'\n';
+		for(j = 0; j < this.macho.segments[i].sections.length; j++){
+			if(!this.sections)
+			{
+				this.sections = '';
+			}
+			this.sections+=(this.macho.segments[i].segname+"."+this.macho.segments[i].sections[j].sectname +': '+this.macho.segments[i].sections[j].addr.toString(16)+'\n');
+		}
+	}
+};
 
-	this.disasm = function()
+MachoTool.prototype.disasm = function()
+{
+	var _failmsg = "Failed to disassemble ";
+	
+	var __TEXT_EXEC = this.macho.getSegment('__TEXT_EXEC');
+	var __KLD = this.macho.getSegment('__KLD');
+	var __TEXT = this.macho.getTEXT();
+	
+	var getcapstone = function(macho)
 	{
-		var failmsg = "Failed to disassemble ";
-		var capstone = new cs.Capstone(cs.ARCH_ARM64, cs.MODE_LITTLE_ENDIAN);
-		var __TEXT_EXEC = this.macho.getSegment('__TEXT_EXEC');
-		var __TEXT = this.macho.getSegment('__TEXT');
-		this.instructions = '';
-		if(__TEXT_EXEC) {
-			try {
-				var instructions = capstone.disasm(this.macho.reader.getBlobAtOffset(__TEXT_EXEC.fileoff.asInt32(), __TEXT_EXEC.vmsize.asInt32()), __TEXT_EXEC.vmsize.asInt32());
-				var instlines = [];
-		   		for(i = 0; i < instructions.length; i++)
-		   		{
-		   			instlines.push(Add(__TEXT_EXEC.vmaddr,instructions[i].address).toString(16)+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
-		   		}
-		   		this.instructions += '__TEXT_EXEC: \n\n'+instlines.join('\n')+'\n\n';
-			}
-			catch(err)
-			{
-				alert(failmsg+"__TEXT_EXEC: "+err.message);
-			}
-		}
-		if(__TEXT)
+		var capstone = {};
+		if(lastbit(macho.header.magic) == 0xf)
 		{
+			console.info("Detected 64-bit mach-o");
 			try {
-				__TEXT = __TEXT.sections[0];
-				var instructions = capstone.disasm(this.macho.reader.getBlobAtOffset(__TEXT.offset, __TEXT.size.asInt32()),__TEXT.addr.asInt32());
-				var instlines = [];
-		   		for(i = 0; i < instructions.length; i++)
-		   		{
-		   			instlines.push(Add(__TEXT.addr.asInt32(),instructions[i].address).toString(16)+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
-		   		}
-		   		this.instructions += '__TEXT.__text: \n\n'+instlines.join('\n')+'\n\n';
+				capstone = new cs.Capstone(cs.ARCH_ARM64, cs.MODE_LITTLE_ENDIAN);
+				console.info("Initialized capstone.");
 			}
 			catch(err)
 			{
-				alert(failmsg+"__TEXT.__text: "+err.message);
+
 			}
 		}
+		else if(lastbit(macho.header.magic) == 0xe)
+		{
+			console.info("Detected 32-bit mach-o");
+			try {
+				capstone = new cs.Capstone(cs.ARCH_ARM, cs.MODE_LITTLE_ENDIAN);
+				console.info("Initialized capstone.");
+			}
+			catch(err)
+			{
+
+			}
+		}
+		return capstone;
 	};
+
+	this.instructions = '';
+	if(__KLD) {
+		try {
+			for(i = 0; i < __KLD.nsects; i++){
+				var sect = __KLD.sections[i];
+				var capst = getcapstone(this.macho);
+				var maxsize = sect.size.asInt32();
+				if(maxsize > UINT32_MAX){
+					maxsize = UINT32_MAX;
+				}
+				var instructions = capst.disasm(this.macho.reader.getBlobAtOffset(sect.offset, maxsize), maxsize, sect.addr.toString(16));
+				capst.close();
+				var instlines = [];
+		   		for(i = 0; i < instructions.length; i++)
+		   		{
+		   			instlines.push(Add(sect.addr, new Int64(instructions[i].address)).toString(16)+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
+		   		}
+		   		this.instructions += '__KLD.'+sect.sectname+': \n\n'+instlines.join('\n')+'\n\n';
+		   }
+		}
+		catch(err)
+		{
+			console.warn(_failmsg+"__KLD: "+err.message+'\n'+err.stack);
+		}
+	}
+	if(__TEXT_EXEC) {
+		try {
+			for(i = 0; i < __TEXT_EXEC.nsects; i++){
+				var sect = __TEXT_EXEC.sections[i];
+				var capst = getcapstone(this.macho);
+				var maxsize = sect.size.asInt32();
+				if(maxsize > UINT32_MAX){
+					maxsize = UINT32_MAX;
+				}
+				var instructions = capst.disasm(this.macho.reader.getBlobAtOffset(sect.offset, maxsize), maxsize, sect.addr.toString(16));
+				capst.close();
+				var instlines = [];
+		   		for(i = 0; i < instructions.length; i++)
+		   		{
+		   			instlines.push(Add(sect.addr, new Int64(instructions[i].address)).toString(16)+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
+		   		}
+		   		this.instructions += '__TEXT_EXEC.'+sect.sectname+': \n\n'+instlines.join('\n')+'\n\n';
+		   }
+		}
+		catch(err)
+		{
+			console.warn(_failmsg+"__TEXT_EXEC: "+err.message+'\n'+err.stack);
+		}
+	}
+	if(__TEXT)
+	{
+		try {
+			for(i = 0; i < __TEXT.nsects; i++){
+				var sect = __TEXT.sections[i];
+				var capst = getcapstone(this.macho);
+				var maxsize = sect.size.asInt32();
+				if(maxsize > UINT32_MAX){
+					maxsize = UINT32_MAX;
+				}
+				var instructions = capst.disasm(this.macho.reader.getBlobAtOffset(sect.offset, maxsize), maxsize, sect.addr.toString(16));
+				capst.close();
+				var instlines = [];
+		   		for(i = 0; i < instructions.length; i++)
+		   		{
+		   			instlines.push(Add(sect.addr,instructions[i].address).toString(16)+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
+		   		}
+		   		this.instructions += '__TEXT.'+sect.sectname+': \n\n'+instlines.join('\n')+'\n\n';
+		   }
+		}
+		catch(err)
+		{
+			console.warn(_failmsg+"__TEXT: "+err.message+'\n'+err.stack);
+		}
+	}
 };
 
 MachoTool.prototype.download = function()
