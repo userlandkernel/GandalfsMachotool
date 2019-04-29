@@ -123,11 +123,11 @@
 			
 		</textarea>
 	</section>
-
 	<script type="text/javascript" src="capstone.min.js"></script>
 	<script type="text/javascript" src="int64.js"></script>
 	<script type="text/javascript" src="rwview.js"></script>
 	<script type="text/javascript" src="ibin.js"></script>
+	<script type="text/javascript" src="lzssdec.js"></script>
 	<script type="text/javascript" src="constants.js"></script>
 	<script type="text/javascript" src="macho.js"></script>
 	<script type="text/javascript">
@@ -156,10 +156,24 @@
 			
 			freader.onload = function() {
 				var buf = new Uint8Array(this.result);
-				window.mtool = new MachoTool(filename, buf);
-				stdout.downloadbtn.onclick = function(){window.mtool.download();};
-				mtool.disasm();
-				updateUI(mtool);
+				if(LZSSDec.dectect(buf.buffer)){
+					alert('Feeding me a compressed kernelcache? No problem we got lzssdec!');
+					var filesize = new pointer_t(sizeof(uint32_t));
+					var x = LZSSDec.prototype.tryLZSS(buf.buffer, new uint32_t(filesize), function(buf){
+						window.mtool = new MachoTool(filename, buf);
+						stdout.downloadbtn.onclick = function(){window.mtool.download();};
+						mtool.disasm();
+						updateUI(mtool);
+					});
+				}
+				else
+				{
+					window.mtool = new MachoTool(filename, buf);
+					stdout.downloadbtn.onclick = function(){window.mtool.download();};
+					mtool.disasm();
+					updateUI(mtool);
+				}
+				
 				//mtool = undefined;
 				//buf = undefined;
 			};

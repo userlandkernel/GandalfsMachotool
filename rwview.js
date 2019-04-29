@@ -5,20 +5,18 @@
  * Licensed under the MIT License.
 */
 
-
 var float = Float64Array;
 var float32 = Float32Array; 
 var pointer_t = ArrayBuffer;
-var int64_t = window.BigInt64Array||Float64Array;
+var int64_t = BigInt64Array;
 var int32_t = Int32Array;
 var int16_t = Int16Array;
 var int8_t = Int8Array;
-var char = int8_t;
-var uint64_t = window.BigUint64Array||Float64Array;
+var uint64_t = BigUint64Array;
 var uint32_t = Uint32Array;
 var uint16_t = Uint16Array;
 var uint8_t = Uint8Array;
-
+var char = uint8_t;
 // Unsigned int boundaries, thanks to wraparound :)
 var UINT64_MAX = parseInt(new uint64_t(['-1'])[0]); // BigInts are 'kindof' fake in js
 var UINT64_MIN = 0;
@@ -78,12 +76,32 @@ function sizeof(JSValue='')
 	}
 }
 
+function fseek(haystack = new ArrayBuffer(), pattern = new char(), maxpos = 0x1000)
+{
+	var _haystack = new char(haystack);
+	var _pattern = new TextDecoder().decode(pattern);
+	maxpos = new uint32_t([maxpos])[0];
+	if(maxpos > haystack.byteLength)
+	{
+		maxpos = haystack.byteLength;
+	}
+	for(i = 0; i < maxpos; i++)
+	{
+		var current = new TextDecoder().decode(_haystack.slice(i, i+pattern.byteLength));
+		if(current == _pattern)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
 var RWView = function RWView(buffer, byteOffset, byteLength)
 {
 	this.buffer = buffer;
 	this.byteOffset = byteOffset;
 	this.byteLength = byteLength;
-
+	this.view = new DataView(this.buffer);
 	if(this.constructor.toString().indexOf('Window') == 9)
 	{
 		throw new TypeError('RWView cannot be used as a function, it is a class.');
@@ -113,46 +131,38 @@ var RWView = function RWView(buffer, byteOffset, byteLength)
 };
 
 RWView.prototype.getInt8 = function(byteOffset = 0, littleEndian = false){
-	var i8 = new Int8Array(this.buffer);
-	return i8[byteOffset];
+	return this.view.getInt8(byteOffset, littleEndian);
 };
 
 RWView.prototype.getUint8 = function(byteOffset = 0, littleEndian = false){
-	var u8 = new Uint8Array(this.buffer);
-	return u8[byteOffset];
+	return this.view.getUint8(byteOffset, littleEndian);
 };
 
 RWView.prototype.getInt16 = function(byteOffset = 0, littleEndian = false){
-	var i16 = new Int16Array(this.buffer);
-	return i16[Math.floor(byteOffset/2)];
+	return this.view.getInt16(byteOffset, littleEndian);
 };
 
 RWView.prototype.getUint16 = function(byteOffset = 0, littleEndian = false){
-	var u16 = new Uint16Array(this.buffer);
-	return u16[Math.floor(byteOffset/2)];
+	return this.view.getUint16(byteOffset, littleEndian);
 };
 
 RWView.prototype.getInt32 = function(byteOffset = 0, littleEndian = false){
-	var i32 = new Int32Array(this.buffer);
-	return i32[Math.floor(byteOffset/4)];
+	return this.view.getInt32(byteOffset, littleEndian);
 };
 
 RWView.prototype.getUint32 = function(byteOffset = 0, littleEndian = false)
 {
-	var u32 = new Uint32Array(this.buffer);
-	return u32[Math.floor(byteOffset/4)];
+	return this.view.getUint32(byteOffset, littleEndian);
 };
 
 RWView.prototype.getFloat32 = function(byteOffset = 0, littleEndian = false)
 {
-	var f32 = new Float32Array(this.buffer);
-	return f32[Math.floor(byteOffset/4)];
+	return this.view.getFloat32(byteOffset, littleEndian);
 };
 
 RWView.prototype.getFloat64 = function(byteOffset = 0, littleEndian = false)
 {
-	var f64 = new Float64Array(this.buffer);
-	return f64[Math.floor(byteOffset/8)];
+	return this.view.getFloat64(byteOffset, littleEndian);
 };
 
 RWView.prototype.getInt64 = function(byteOffset = 0, littleEndian = false)
@@ -172,42 +182,42 @@ RWView.prototype.getInt64 = function(byteOffset = 0, littleEndian = false)
 
 RWView.prototype.setInt8 = function(byteOffset = 0, value = 0, littleEndian = false)
 {
-	new Int8Array(this.buffer)[byteOffset] = value;
+	return this.view.setInt8(byteOffset, value, littleEndian);
 };
 
 RWView.prototype.setUint8 = function(byteOffset = 0, value = 0, littleEndian = false)
 {
-	new Uint8Array(this.buffer)[byteOffset] = value;
+	return this.view.setUint8(byteOffset, value, littleEndian);
 };
 
 RWView.prototype.setInt16 = function(byteOffset = 0, value = 0, littleEndian = false)
 {
-	new Int16Array(this.buffer)[Math.floor(byteOffset/2)] = value;
+	return this.view.setInt16(byteOffset, value, littleEndian);
 };
 
 RWView.prototype.setUint16 =function(byteOffset = 0, value = 0, littleEndian = false)
 {
-	new Uint16Array(this.buffer)[Math.floor(byteOffset/2)] = value;
+	return this.view.setUint16(byteOffset, value, littleEndian);
 };
 
 RWView.prototype.setInt32 = function(byteOffset = 0, value = 0, littleEndian = false)
 {
-	new Int32Array(this.buffer)[Math.floor(byteOffset/4)] = value;
+	return this.view.setInt32(byteOffset, value, littleEndian);
 };
 
 RWView.prototype.setUint32 = function(byteOffset = 0, value = 0, littleEndian = false)
 {
-	new Uint32Array(this.buffer)[Math.floor(byteOffset/4)] = value;
+	return this.view.setUint32(byteOffset, value, littleEndian);
 };
 
 RWView.prototype.setFloat32 = function(byteOffset = 0, value = 0, littleEndian = false)
 {
-	new Float32Array(this.buffer)[Math.floor(byteOffset/4)] = value;
+	return this.view.setFloat32(byteOffset, value, littleEndian);
 };
 
 RWView.prototype.setFloat64 = function(byteOffset = 0, value = 0, littleEndian = false)
 {
-	new Float64Array(this.buffer)[Math.floor(byteOffset/8)] = value;
+	return this.view.setFloat64(byteOffset, value, littleEndian);
 };
 
 RWView.prototype.setInt64 = function(byteOffset = 0, value = 0, littleEndian = false)
