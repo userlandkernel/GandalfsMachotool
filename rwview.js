@@ -231,3 +231,150 @@ RWView.prototype.setInt64 = function(byteOffset = 0, value = 0, littleEndian = f
 		new Int8Array(this.buffer)[i] = bytes[i];
 	}
 };
+var DataReader = function(data) {
+	this.view = new RWView(data.buffer, data.byteOffset, data.byteLength);
+	this.data = data;
+	this.pos = 0;
+};
+
+DataReader.prototype.getUint32 = function () {
+	this.pos += 4;
+	return this.view.getUint32(this.pos - 4, true);
+};
+
+DataReader.prototype.getUint16 = function () {
+	this.pos += 2;
+	return this.view.getUint16(this.pos - 2, true);
+};
+
+DataReader.prototype.getUint8 = function () {
+	this.pos += 1;
+	return this.view.getUint8(this.pos - 1, true);
+};
+
+DataReader.prototype.getF64 = function () {
+	this.pos += 8;
+	return Int64.fromDouble(this.view.getFloat64(this.pos - 8, true));
+};
+
+DataReader.prototype.getBlob = function(size) {
+	this.pos += size;
+	var result = this.data.slice(this.pos - size, this.pos);
+	return result;
+};
+
+DataReader.prototype.getBlobAtOffset = function(offset, size) {
+
+	var result = this.data.slice(offset, offset + size);
+	return result;
+};
+
+DataReader.prototype.atU8 = function(pos=0) {
+	return this.view.getUint8(this.pos + pos);
+};
+
+DataReader.prototype.reset = function(pos) {
+	this.pos = pos;
+};
+
+function lshiftU32Array(u32arr, shift) {
+
+	u32arr[0] = u32arr[0] << shift;
+
+	let extra = u32arr[1] & (0xffffffff << (32-shift));
+	extra = extra >> (32 - shift);
+
+	u32arr[0] = u32arr[0] & extra;
+	u32arr[1] = u32arr[1] << shift;
+}
+
+DataReader.prototype.F64uleb128 = function () {
+
+	let result = 0.0;
+
+	var bytes = new Uint8Array(8);
+	var i=0;
+
+	for (; i<8; i++) {
+		let b = this.getUint8();
+		bytes[i] = b;
+		if ((b & 0x80) != 0x80) 
+			break;
+	}
+
+	let shift  = 0;
+	for (;i>=0; i--) {
+
+		let b = bytes[i];
+
+		result = binHelper.lshiftF64(result, 7);
+		result = binHelper.f64OrLo(result, b & 0x7f);
+
+		if (shift > 64)
+			break;
+
+		shift += 7;
+	}
+
+	return result;
+};
+
+DataReader.prototype.U32uleb128 = function () {
+
+	let result = 0.0;
+	let shift  = 0;
+
+	while (1) {
+		let b = this.getUint8();
+		result = result | ((b & 0x7f) << shift);
+
+		if ( ((b & 0x80) != 0x80) || shift > 24)
+			break;
+
+		shift += 7;
+	}
+
+	return result;
+};
+
+DataReader.prototype.bytesLeft = function () {
+	return this.data.length - this.pos;
+};
+
+// read a null-terminated string
+DataReader.prototype.getStr = function() {
+
+	let end = this.data.indexOf(0, this.pos);
+
+	let arr = Array.from(this.data.slice(this.pos, end));
+	this.pos = end+1;
+
+	return String.fromCharCode(...arr);
+};
+
+DataReader.prototype.getStrAt = function(pos) {
+
+	let end = this.data.indexOf(0, pos);
+
+	let arr = Array.from(this.data.slice(pos, end));
+	return String.fromCharCode(...arr);
+};
+
+DataReader.prototype.skip = function(len) {
+	this.pos += len;
+};
+
+DataReader.prototype.move = function (pos) {
+	this.pos = pos;
+};
+
+DataReader.prototype.writeString = function(off = 0, str = '' )
+{
+	var temp = new TextEncoder().encode(str);
+	this.data.set(temp, off);
+};
+
+function lastbit(n)
+{
+	return parseInt('0x'+n.toString(16)[n.toString(16).length-1]);
+}

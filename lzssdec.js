@@ -23,7 +23,7 @@ LZSSStream.prototype.reset = function()
 	this.ptr = 0;
 };
 
-LZSSDec.prototype.decompress_lzss = function(dst = new LZSSStream(), src = new LZSSStream(), srclen = 0)
+LZSSDec.prototype.decompress_lzss = function(dst = new LZSSStream(), src = new LZSSStream(), srclen = 0, statusEl = null, callback = function(){})
 {
 	var text_buf = new uint8_t(this.N + this.F - 1);
 	var dststart = 0;
@@ -36,57 +36,66 @@ LZSSDec.prototype.decompress_lzss = function(dst = new LZSSStream(), src = new L
 
 	r = this.N - this.F;
 	flags = 0;
+	window.lzss_busy = true;
 	window.lzss_status_last = 0;
-	for(;;){
+	statusEl.innerText=(window.lzss_status_last+'% decompressed');
+	window.lzss_stuff=setInterval(function(callback){
 		window.lzss_status = ((src.ptr / srcend) * 100).toFixed(2);
 		if(window.lzss_status_last != window.lzss_status){
-			console.log(window.lzss_status+'% decompressed');
+			if(statusEl){
+				statusEl.innerText=(window.lzss_status+'% decompressed');
+			}
 			window.lzss_status_last = window.lzss_status;
 		}
-		if (((flags >>= 1) & 0x100) == 0) {
-			if(src.ptr < srcend) {
-				c = src.next();
+		if(window.lzss_busy){
+			if (((flags >>= 1) & 0x100) == 0) {
+				if(src.ptr < srcend) {
+					c = src.next();
+				}
+				else {
+					window.lzss_busy = false;
+					return;
+				}
+				flags = c | 0xFF00;
 			}
-			else {
-				break;
-			}
-			flags = c | 0xFF00;
-		}
-		if (flags & 1) {
-			if(src.ptr < srcend) {
-				c = src.next();
-			} else {
-				break;
-			}
-			if(dst.ptr == dstend)
-			{
-				throw "overflow in decoding";
-			}
-			dst.next(c);
-			text_buf[r++] = c;
-			r &= (this.N - 1);
-		} else {
-			if(src.ptr < srcend) {
-				i = src.next();
-			} else {
-				break;
-			}
-			if(src.ptr < srcend) {
-				j = src.next();
-			} else {
-				break;
-			}
-			i |= ((j & 0xF0) << 4);
-			j = (j & 0x0F) + this.THRESHOLD;
-			for(k = 0; k <= j; k++) {
-				c = text_buf[(i+k) & (this.N - 1)];
+			if (flags & 1) {
+				if(src.ptr < srcend) {
+					c = src.next();
+				} else {
+					window.lzss_busy = false;
+					return;
+				}
 				dst.next(c);
 				text_buf[r++] = c;
-				r &= (N - 1);
+				r &= (this.N - 1);
+			} else {
+				if(src.ptr < srcend) {
+					i = src.next();
+				} else {
+					window.lzss_busy = false;
+					return;
+				}
+				if(src.ptr < srcend) {
+					j = src.next();
+				} else {
+					window.lzss_busy = false;
+					return;
+				}
+				i |= ((j & 0xF0) << 4);
+				j = (j & 0x0F) + this.THRESHOLD;
+				for(k = 0; k <= j; k++) {
+					c = text_buf[(i+k) & (this.N - 1)];
+					dst.next(c);
+					text_buf[r++] = c;
+					r &= (N - 1);
+				}
 			}
 		}
-	}
-	return Math.floor(dst.ptr - dststart);
+		else {
+			callback(dst);
+			clearInterval(window.lzss_stuff);
+		}
+	}, 0.0000000);
 };
 
 var compHeader = function compHeader(data)
@@ -116,7 +125,7 @@ LZSSDec.dectect = function(data)
 	}
 };
 
-LZSSDec.prototype.tryLZSS = function(compressed = new ArrayBuffer(), filesize = new uint32_t(new ArrayBuffer(sizeof(uint32_t))), callback = function(){})
+LZSSDec.prototype.tryLZSS = function(compressed = new ArrayBuffer(), filesize = new uint32_t(new ArrayBuffer(sizeof(uint32_t))), statusEl = null, callback = function(){})
 {
 	var _comppos = LZSSDec.tryFindCompHeader(compressed);
 	if(_comppos < 0) {
@@ -164,7 +173,6 @@ LZSSDec.prototype.tryLZSS = function(compressed = new ArrayBuffer(), filesize = 
 	feed--;
 	feed = compressed.slice(feed, compressed.byteLength);
 
-	var rc = this.decompress_lzss(new LZSSStream(decomp), new LZSSStream(feed), _compHeader.compressedSize);
+	var rc = this.decompress_lzss(new LZSSStream(decomp), new LZSSStream(feed), _compHeader.compressedSize, statusEl, callback);
 	filesize[0] = rc;
-	return callback(decomp);
 };

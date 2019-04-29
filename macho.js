@@ -2,162 +2,11 @@
  * MachO javascript
  * Written by Kudima, extended by Sem Voigtländer.
 */
-
-function lastbit(n)
-{
-	return parseInt('0x'+n.toString(16)[n.toString(16).length-1]);
-}
-
-function MachOException(msg = '') {
+var MachOException = function MachOException(msg=''){
 	this.message = msg.toString(16);
 	this.stack = (new Error()).stack;
+	this.name = "MachOException";
 };
-MachOException.prototype = Object.create(Error.prototype);
-MachOException.prototype.name = "MachOException";
-
-var MachoReader = function(data) {
-	this.view = new RWView(data.buffer, data.byteOffset, data.byteLength);
-	this.data = data;
-	this.pos = 0;
-};
-
-MachoReader.prototype.getUint32 = function () {
-	this.pos += 4;
-	return this.view.getUint32(this.pos - 4, true);
-};
-
-MachoReader.prototype.getUint16 = function () {
-	this.pos += 2;
-	return this.view.getUint16(this.pos - 2, true);
-};
-
-MachoReader.prototype.getUint8 = function () {
-	this.pos += 1;
-	return this.view.getUint8(this.pos - 1, true);
-};
-
-MachoReader.prototype.getF64 = function () {
-	this.pos += 8;
-	return Int64.fromDouble(this.view.getFloat64(this.pos - 8, true));
-};
-
-MachoReader.prototype.getBlob = function(size) {
-	this.pos += size;
-	var result = this.data.slice(this.pos - size, this.pos);
-	return result;
-};
-
-MachoReader.prototype.getBlobAtOffset = function(offset, size) {
-
-	var result = this.data.slice(offset, offset + size);
-	return result;
-};
-
-MachoReader.prototype.atU8 = function(pos=0) {
-	return this.view.getUint8(this.pos + pos);
-};
-
-MachoReader.prototype.reset = function(pos) {
-	this.pos = pos;
-};
-
-function lshiftU32Array(u32arr, shift) {
-
-	u32arr[0] = u32arr[0] << shift;
-
-	let extra = u32arr[1] & (0xffffffff << (32-shift));
-	extra = extra >> (32 - shift);
-
-	u32arr[0] = u32arr[0] & extra;
-	u32arr[1] = u32arr[1] << shift;
-}
-
-MachoReader.prototype.F64uleb128 = function () {
-
-	let result = 0.0;
-
-	var bytes = new Uint8Array(8);
-	var i=0;
-
-	for (; i<8; i++) {
-		let b = this.getUint8();
-		bytes[i] = b;
-		if ((b & 0x80) != 0x80) 
-			break;
-	}
-
-	let shift  = 0;
-	for (;i>=0; i--) {
-
-		let b = bytes[i];
-
-		result = binHelper.lshiftF64(result, 7);
-		result = binHelper.f64OrLo(result, b & 0x7f);
-
-		if (shift > 64)
-			break;
-
-		shift += 7;
-	}
-
-	return result;
-};
-
-MachoReader.prototype.U32uleb128 = function () {
-
-	let result = 0.0;
-	let shift  = 0;
-
-	while (1) {
-		let b = this.getUint8();
-		result = result | ((b & 0x7f) << shift);
-
-		if ( ((b & 0x80) != 0x80) || shift > 24)
-			break;
-
-		shift += 7;
-	}
-
-	return result;
-};
-
-MachoReader.prototype.bytesLeft = function () {
-	return this.data.length - this.pos;
-};
-
-// read a null-terminated string
-MachoReader.prototype.getStr = function() {
-
-	let end = this.data.indexOf(0, this.pos);
-
-	let arr = Array.from(this.data.slice(this.pos, end));
-	this.pos = end+1;
-
-	return String.fromCharCode(...arr);
-};
-
-MachoReader.prototype.getStrAt = function(pos) {
-
-	let end = this.data.indexOf(0, pos);
-
-	let arr = Array.from(this.data.slice(pos, end));
-	return String.fromCharCode(...arr);
-};
-
-MachoReader.prototype.skip = function(len) {
-	this.pos += len;
-};
-
-MachoReader.prototype.move = function (pos) {
-	this.pos = pos;
-};
-
-MachoReader.prototype.writeString = function(off = 0, str = '' )
-{
-	var temp = new TextEncoder().encode(str);
-	this.data.set(temp, off);
-};
-
 // MachO structs
 var MachO_LC = function (reader) {
 	this.cmd  = reader.getUint32();
@@ -188,7 +37,7 @@ var MachO_LC_DYLD_INFO = function(cmd) {
 
 	if (cmd.cmd != MachO.CMD_DYLD_INFO) throw new MachOException("DYLD_INFO cmd != 0x80000022");
 
-	var reader = new MachoReader(cmd.data);
+	var reader = new DataReader(cmd.data);
 	this.__cmd = cmd;
 	this.rebase_off = reader.getUint32();
 	this.rebase_size = reader.getUint32();
@@ -210,7 +59,7 @@ MachO_LC_ID_DYLIB = function (cmd) {
 
 	if (cmd.cmd != MachO.CMD_ID_DYLIB) throw new MachOException("LC_ID_DYLIB cmd != 0xD");
 
-	var reader = new MachoReader(cmd.data);
+	var reader = new DataReader(cmd.data);
 
 	this.__cmd = cmd;
 	this.name_offset = reader.getUint32();
@@ -228,7 +77,7 @@ var MachO_LC_SYMTAB = function (cmd) {
 
 	if (cmd.cmd != 2) throw new MachOException("LC_SYMTAB cmd != 2");
 
-	var reader = new MachoReader(cmd.data);
+	var reader = new DataReader(cmd.data);
 	this.__cmd = cmd;
 	this.symoff   = reader.getUint32();
 	this.nsyms	  = reader.getUint32();
@@ -238,7 +87,7 @@ var MachO_LC_SYMTAB = function (cmd) {
 
 MachO_LC_SYMTAB.prototype.loadStrings = function (mach) {
 
-	var reader = new MachoReader(mach.data);
+	var reader = new DataReader(mach.data);
 	reader.move(this.stroff);
 
 	this.strings = [];
@@ -250,7 +99,7 @@ MachO_LC_SYMTAB.prototype.loadStrings = function (mach) {
 
 MachO_LC_SYMTAB.prototype.loadSymbols = function (data) {
 
-	var reader = new MachoReader(data);
+	var reader = new DataReader(data);
 	reader.move(this.symoff);
 
 	this.nlists = [];
@@ -274,7 +123,7 @@ MachO_LC_DYSYMTAB = function (cmd) {
 
 	if (cmd.cmd != MachO.CMD_DYSYMTAB) throw new MachOException("LC_SYMTAB cmd != 0xB");
 
-	var reader = new MachoReader(cmd.data);
+	var reader = new DataReader(cmd.data);
 
 	this.__cmd = cmd;
 	this.ilocalsym = reader.getUint32();
@@ -301,7 +150,7 @@ MachO_LC_SEGMENT_64 = function (cmd) {
 
 	if (cmd.cmd != MachO.CMD_SEGMENT_64) throw new MachOException("LC_SYMTAB cmd != 0xD");
 
-	var reader = new MachoReader(cmd.data);
+	var reader = new DataReader(cmd.data);
 
 	this.__cmd = cmd;
 	this.segname = reader.getStrAt(0);
@@ -325,7 +174,7 @@ MachO_LC_SEGMENT_64 = function (cmd) {
 
 MachO_LC_SECTION_64 = function (data) {
 
-	var reader = new MachoReader(data);
+	var reader = new DataReader(data);
 
 	this.sectname = reader.getStrAt(0);
 	reader.skip(0x10);
@@ -349,7 +198,7 @@ MachO_LC_SECTION_64 = function (data) {
 //
 var MachO = function (data) {
 	this.data = data;
-	this.reader = new MachoReader(data);
+	this.reader = new DataReader(data);
 	this.symtab = null;
 }
 
@@ -479,7 +328,7 @@ MachO.prototype.nonLazySymbolAddr = function (name) {
 		var offsetInIndirect = got.reserved1;
 
 		var dyn = this.get_DYSYMTAB();
-		var reader = new MachoReader(this.data);
+		var reader = new DataReader(this.data);
 		reader.move(dyn.indirectsymoff + offsetInIndirect * 4);
 
 		var syms = this.get_SYMTAB();
@@ -522,7 +371,7 @@ MachO.prototype.lazySymbolAddr = function (name) {
 		var offsetInIndirect = la_symbol_ptr.reserved1;
 
 		var dyn = this.get_DYSYMTAB();
-		var reader = new MachoReader(this.data);
+		var reader = new DataReader(this.data);
 		reader.move(dyn.indirectsymoff + offsetInIndirect * 4);
 
 		var syms = this.get_SYMTAB();
@@ -568,9 +417,9 @@ MachO.prototype.getLinkeditStartInFile = function () {
 // address
 function findSymbolInLinkedit(data, symbol) {
 
-	var reader = new MachoReader(data);
+	var reader = new DataReader(data);
 
-	var symbolReader = new MachoReader(binHelper.asciiToUint8Array(symbol));
+	var symbolReader = new DataReader(binHelper.asciiToUint8Array(symbol));
 
 	while (1) {
 

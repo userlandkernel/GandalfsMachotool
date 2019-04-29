@@ -1,0 +1,86 @@
+* {
+	font-family: 'Courier New', 'Console';
+}
+
+input[type='file']::before {
+  content: 'Select some files';
+  display: inline-block;
+  background: black;
+  color: #ffffff;
+  border: 1px solid #999;
+  border-radius: 3px;
+  padding: 5px 8px;
+  outline: none;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 10pt;
+}
+
+input[type='file']:hover::before {
+  border-color: black;
+  outline: none;
+}
+input[type='file']:active::before {
+  background: silver;
+  outline: none;
+}
+
+input[type='file']::-webkit-file-upload-button {
+	visibility: hidden;
+	width: 0px;
+	height: 0px;
+	outline: none;
+}
+
+.hidden {
+	display: none;
+}
+ul.tree, ul.tree ul {
+	list-style-type: none;
+	margin: 0;
+	padding: 0;
+} 
+
+ul.tree ul {
+	margin-left: 10px;
+}
+
+ul.tree li {
+	margin: 0;
+	padding: 0 7px;
+	line-height: 20px;
+	color: #369;
+	font-weight: bold;
+	border-left:1px solid rgb(100,100,100);
+}
+
+ul.tree li:last-child {
+   border-left:none;
+}
+
+ul.tree li::before {
+	position:relative;
+	top:-0.3em;
+	height:1em;
+	width:12px;
+	color:white;
+	border-bottom:1px solid rgb(100,100,100);
+	content:"";
+	display:inline-block;
+	left:-7px;
+}
+
+ul.tree li:last-child::before {
+		border-left:1px solid rgb(100,100,100);   
+}
+textarea {
+		background: #e4e4e4;
+		color: #000000;
+		outline: none;
+		font-family: 'Courier New', 'Console';
+		width: 100%;
+		min-height: 250px;
+		border: 0px;
+}

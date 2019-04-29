@@ -2,94 +2,23 @@
 <html>
 <head>
 	<title>Mach-O Parser</title>
-	<style type="text/css">
-	* {
-		font-family: 'Courier New', 'Console';
-	}
-
-	input[type='file']::before {
-	  content: 'Select some files';
-	  display: inline-block;
-	  background: black;
-	  color: #ffffff;
-	  border: 1px solid #999;
-	  border-radius: 3px;
-	  padding: 5px 8px;
-	  outline: none;
-	  white-space: nowrap;
-	  -webkit-user-select: none;
-	  cursor: pointer;
-	  font-weight: 700;
-	  font-size: 10pt;
-	}
-
-	input[type='file']:hover::before {
-	  border-color: black;
-	  outline: none;
-	}
-	input[type='file']:active::before {
-	  background: silver;
-	  outline: none;
-	}
-
-	input[type='file']::-webkit-file-upload-button {
-		visibility: hidden;
-		width: 0px;
-		height: 0px;
-		outline: none;
-	}
-
-	.hidden {
-		display: none;
-	}
-	ul.tree, ul.tree ul {
-		list-style-type: none;
-		margin: 0;
-		padding: 0;
-   } 
-   
-   ul.tree ul {
-    	margin-left: 10px;
-   }
-   
-   ul.tree li {
-    	margin: 0;
-    	padding: 0 7px;
-    	line-height: 20px;
-    	color: #369;
-    	font-weight: bold;
-    	border-left:1px solid rgb(100,100,100);
-   }
-
-   ul.tree li:last-child {
-       border-left:none;
-   }
-   
-   ul.tree li::before {
-    	position:relative;
-    	top:-0.3em;
-    	height:1em;
-    	width:12px;
-    	color:white;
-    	border-bottom:1px solid rgb(100,100,100);
-    	content:"";
-    	display:inline-block;
-    	left:-7px;
-   }
-
-   ul.tree li:last-child::before {
-   		border-left:1px solid rgb(100,100,100);   
-   }
-   textarea {
-   		background: #e4e4e4;
-   		color: #000000;
-   		outline: none;
-   		font-family: 'Courier New', 'Console';
-   		width: 100%;
-   		min-height: 250px;
-   		border: 0px;
-   }
-</style>
+	<link rel="stylesheet" href="gandalf.css" type="text/css" />
+	<script type="text/javascript">
+		function dload(name)
+		{
+			var _a = document.createElement('a'); 
+			_a.href=window.URL.createObjectURL(
+				new Blob([
+					new TextEncoder().encode(document.getElementById(name).value)],
+					{
+						'content-type':'text/plain'
+					}
+				)
+			);
+			_a.download=mtool.filename+'.'+name+'.txt';
+			_a.click();
+		}
+	</script>
 </head>
 <body>
 	<center>
@@ -97,7 +26,7 @@
 		<img src="gandalf.png" height="100px"/>
 	</center>
 	<h1>Mach-O Parser</h1>
-	<p>Special thanks to @kudima and @saelo, improved by @userlandkernel.</p>
+	<p id="status">Special thanks to @kudima and @saelo, improved by @userlandkernel.</p>
 	<br/>
 	<input type="file" placeholder="Upload Mach-O File...." id='file'><br/>
 	<br/>
@@ -106,19 +35,19 @@
 		<button id="findsym">Find</button><button id="download">Download</button>
 		<br/>
 		<br/>
-		<h3>Segments</h3> <button onclick="var _a = document.createElement('a'); _a.href=(window.URL.createObjectURL(new Blob([new TextEncoder().encode(document.getElementById('segments').value)],{'content-type':'text/plain'})));_a.download=mtool.filename+'.segments.txt';_a.click();">Open</button>
+		<h3>Segments</h3> <button onclick="dload('segments');">Open</button>
 		<textarea id="segments">
 			
 		</textarea>
-		<h3>Sections</h3> <button onclick="var _a = document.createElement('a'); _a.href=(window.URL.createObjectURL(new Blob([new TextEncoder().encode(document.getElementById('sections').value)],{'content-type':'text/plain'})));_a.download=mtool.filename+'.sections.txt';_a.click();">Open</button>
+		<h3>Sections</h3> <button onclick="dload('sections');">Open</button>
 		<textarea id="sections">
 			
 		</textarea>
-		<h3>Symbols</h3> <button onclick="var _a = document.createElement('a'); _a.href=(window.URL.createObjectURL(new Blob([new TextEncoder().encode(document.getElementById('symbols').value)],{'content-type':'text/plain'})));_a.download=mtool.filename+'.symbols.h';_a.click();">Open</button>
+		<h3>Symbols</h3> <button onclick="dload('symbols');">Open</button>
 		<textarea id="symbols">
 			
 		</textarea>
-		<h3>Disassembly</h3> <button onclick="var _a = document.createElement('a'); _a.href=(window.URL.createObjectURL(new Blob([new TextEncoder().encode(document.getElementById('disasm').value)],{'content-type':'text/plain'})));_a.download=mtool.filename+'.disassembly.txt';_a.click();">Open</button>
+		<h3>Disassembly</h3> <button onclick="dload('disasm');">Open</button>
 		<textarea id="disasm">
 			
 		</textarea>
@@ -139,6 +68,7 @@
 		stdout.sections = document.getElementById('sections');
 		stdout.disasm = document.getElementById('disasm');
 		stdout.downloadbtn = document.getElementById('download');
+		stdout.status = document.getElementById('status');
 
 		var performMachoAnalysis = function() {
 
@@ -152,19 +82,59 @@
 				stdout.segments.value = mtool.segments;
 				stdout.symbols.value = mtool.symbols;
 				stdout.sections.value = mtool.sections;
+				stdout.status.innerText = 'Sucessfully analyzed and disassembled mach-o.';
 			};
 			
 			freader.onload = function() {
-				var buf = new Uint8Array(this.result);
+				stdout.status.innerText = 'Analyzing please wait...';
+				var buf = new uint8_t(this.result);
+				window.machos = [];
+				window.currentMachoNum = 0;
+				window.machofinder = setInterval(function(buf){
+					var i = window.currentMachoNum;
+					window.machopercent = "("+((i/buf.byteLength)*100).toFixed(2)+"%)";
+					window.foundmacho = "";
+					var _threshold = 4000;
+					try {
+						for(j = i+_threshold; j > i; j--){
+							if(window.currentMachoNum >= buf.byteLength){
+								stdout.status.innerText = "Found "+window.machos.length+" in the binary!";
+								window.currentMachoNum = "done";
+								clearInterval(window.machofinder);
+							}
+							var magic = new RWView(buf.slice(j, j+sizeof(uint32_t)).buffer);
+
+							if(magic.getUint32(0, false) == 0xfeedface 
+								|| magic.getUint32(0, false) == 0xfeedfacf
+								|| magic.getUint32(0, true) == 0xfeedface
+								|| magic.getUint32(0, true) == 0xfeedfacf
+							) {
+							
+								window.machos.push(new MachoTool('macho-'+window.machos.length, buf.slice(j, buf.byteLength)));
+								window.foundmacho= "Found new mach-o at offset: 0x"+j.toString(16);
+							}
+						}
+					}
+					catch(err){
+						window.currentMachoNum+=sizeof(uint32_t);
+					}
+					window.currentMachoNum+=(_threshold*sizeof(uint32_t));
+					stdout.status.innerText = window.foundmacho+" "+"Kext / Submacho analysis: "+window.machopercent;
+
+				}, 0.00, buf);
 				if(LZSSDec.dectect(buf.buffer)){
+					stdout.status.innerText = 'We got a compressed kernelcache, decompressing it...';
 					alert('Feeding me a compressed kernelcache? No problem we got lzssdec!');
-					var filesize = new pointer_t(sizeof(uint32_t));
-					var x = LZSSDec.prototype.tryLZSS(buf.buffer, new uint32_t(filesize), function(buf){
-						window.mtool = new MachoTool(filename, buf);
-						stdout.downloadbtn.onclick = function(){window.mtool.download();};
-						mtool.disasm();
-						updateUI(mtool);
-					});
+					setTimeout(function(buf){
+						var filesize = new pointer_t(sizeof(uint32_t));
+						var x = LZSSDec.prototype.tryLZSS(buf.buffer, new uint32_t(filesize), stdout.status, function(buf){
+							window.mtool = new MachoTool(filename, buf);
+							stdout.status.innerText = 'Sucessfully analyzed and disassembled mach-o.';
+							stdout.downloadbtn.onclick = function(){window.mtool.download();};
+							mtool.disasm();
+							updateUI(mtool);
+						});
+					},0.1, buf);
 				}
 				else
 				{
@@ -173,7 +143,6 @@
 					mtool.disasm();
 					updateUI(mtool);
 				}
-				
 				//mtool = undefined;
 				//buf = undefined;
 			};
