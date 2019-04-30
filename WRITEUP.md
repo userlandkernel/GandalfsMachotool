@@ -2,7 +2,7 @@
 Mach-O is a fileformat commonly used in Apple's Operating Systems such as iOS and macOS.  
 The fileformat consists of a header and loadcommands that serve as hint for the structure of the binary made up from segments with sections.  
 One segment for example is the symbol table which contains references of all unstripped symbols with their code locations and string locations.  
-If you want to [Learn more about mach-o](https://github.com/aidansteele/osx-abi-macho-file-format-reference) you can click on the link.  
+[Learn more about mach-o](https://github.com/aidansteele/osx-abi-macho-file-format-reference).  
 
 ## The flow of a mach-o analysis tool
 1. Load binary data.  
@@ -101,6 +101,7 @@ The search pattern should also be a string.
 ```
 
 ### Decoding mnemonics and opcodes to instructions
+#### Machine Code and Decoding
 Generally machinecode in hexadecimal in a binary is encoded with hints.  
 These hints can be used to decode the instructions and represent the logic of the code in human readable processor instructions.  
 The encoding and hints work differently per processor architecture which makes disassembly a hard process for the programmer.  
@@ -108,9 +109,12 @@ However, the theory for 32-bit arm is for example that an encoded instruction is
 The 32-bit hex its first bit is 0xE.  
 Based of many logical operands and the rest of the bits one can derrive how to read the next data and what the mnemonic / opcodes are belonging to the encoded instruction.  
 It would take a lot of algorithmic skills to reproduce this in javascript and hours of reading the ARM assembly manual.  
-Nevertheless 64-bit ARMv8 is even more complex and it would be way cooler to support more architectures now that the mach-o is parsed.  
-Luckily a fork existed on GitHub of disassembler framework called capstone.  
+Nevertheless 64-bit ARMv8 is even more complex and it would be way cooler to support more architectures now that the mach-o is parsed. 
+
+#### Capstone Disassembler
+Luckily a fork existed on GitHub of disassembler framework called Capstone.  
 Capstone is licensed under the free and open BSD license allowing anyone to use the code.  
+If you want learn more about Capstone pay a visit to [their website](http://www.capstone-engine.org/).  
 The fork of it was for emscripten, a way to assemble bitcode (c and c++ for example) to javascript or web assembly.  
 The fork had some issues because there was a memory limit, making disassembly of large sections fail.  
 Updating the fork with new flags and some code changes fixed that, as the ALLOW_MEMORY_GROWTH=1 flag deals with memory growth of the simulated heap that emscripten creates automatically at runtime.  
