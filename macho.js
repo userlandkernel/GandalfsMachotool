@@ -7,36 +7,65 @@ var MachOException = function MachOException(msg=''){
 	this.stack = (new Error()).stack;
 	this.name = "MachOException";
 };
-// MachO structs
-var MachO_LC = function (reader) {
+
+// @class MachO
+var MachO = function (data) {
+	this.data = data;
+	this.reader = new DataReader(data);
+	this.symtab = null;
+};
+
+// XXX: we should cache all the loads like symbols table, commands etc.
+// cause rereading the symbols table might take a while
+
+MachO.HEADER_SIZE  = 0x10;
+MachO.CMD_SIZE	   = 0x48;
+MachO.SECTION_SIZE = 0x50;
+MachO.CMD_SYMTAB     = 2;
+MachO.CMD_DYSYMTAB   = 0xB;
+MachO.CMD_SEGMENT_64 = 0x19;
+MachO.CMD_DYLD_INFO  = 0x80000022
+MachO.CMD_ID_DYLIB    = 0xD;
+MachO.S_NON_LAZY_SYMBOL_POINTERS = 0x6;
+MachO.S_LAZY_SYMBOL_POINTERS = 0x7;
+MachO.SECTION_TYPE   = 0x000000ff
+MachO.PTR_SIZE = 8;
+
+MachO.assert = function(condition, msg='')
+{
+	if(!condition)
+	{
+		throw new MachOException("assert/failure: "+msg);
+	}
+};
+
+var LoadCommand = function(reader) {
 	this.cmd  = reader.getUint32();
 	this.size = reader.getUint32();
 	this.data = reader.getBlob(this.size - 8);
-}
+};
 
-var MachO_HEADER = function(reader) {
-	this.magic	  = reader.getUint32();
-	this.cpu	  = reader.getUint32();
-	this.cpu2	  = reader.getUint32();
-	this.type	  = reader.getUint32();
-	this.ncmds	  = reader.getUint32();
-	this.cmdsSize = reader.getUint32();
-	this.flasg	  = reader.getUint32();
-	this.res	  = reader.getUint32();
-}
+var MachHeader = function(reader) {
+	this.magic	  = reader.getUint32(); //e.g: 0xfeedface
+	this.cpu	  = reader.getUint32(); // e.g: 0x100000c (means 64-bit ARM)
+	this.cpu2	  = reader.getUint32(); 
+	this.type	  = reader.getUint32(); // e.g: kext
+	this.ncmds	  = reader.getUint32(); // number of load commands
+	this.cmdsSize = reader.getUint32(); // total size of load commands together
+	this.flags	  = reader.getUint32(); // flags
+	this.res	  = reader.getUint32(); // reserved, we don't use this generally
+};
 
-var nlist_64 = function (reader) {
-	this.n_strx = reader.getUint32();
-	this.n_type = reader.getUint8();
-	this.n_sect = reader.getUint8();
-	this.n_desc = reader.getUint16();
-	this.n_value = reader.getF64();
-}
+var Nlist64 = function(reader) {
+	this.n_strx = reader.getUint32(); // index in the string table
+	this.n_type = reader.getUint8(); // e.g: 15 (symbol)
+	this.n_sect = reader.getUint8(); // section
+	this.n_desc = reader.getUint16(); // description
+	this.n_value = reader.getF64(); // the offset of the symbol
+};
 
-var MachO_LC_DYLD_INFO = function(cmd) {
-
-	if (cmd.cmd != MachO.CMD_DYLD_INFO) throw new MachOException("DYLD_INFO cmd != 0x80000022");
-
+var DyldInfoCommand = function(cmd) {
+	MachO.assert(cmd.cmd == MachO.CMD_DYLD_INFO, "DYLD_INFO cmd != 0x80000022");
 	var reader = new DataReader(cmd.data);
 	this.__cmd = cmd;
 	this.rebase_off = reader.getUint32();
@@ -49,82 +78,76 @@ var MachO_LC_DYLD_INFO = function(cmd) {
 	this.lazy_bind_size = reader.getUint32();
 	this.export_off = reader.getUint32();
 	this.export_size = reader.getUint32();
-}
+};
 
-MachO_LC_DYLD_INFO.prototype.getExportsData = function (mach) {
+
+DyldInfoCommand.prototype.getExportsData = function (mach) {
 	return mach.reader.getBlobAtOffset(this.export_off, this.export_size);
-}
+};
 
-MachO_LC_ID_DYLIB = function (cmd) {
+var DylibIDCommand = function (cmd) {
 
-	if (cmd.cmd != MachO.CMD_ID_DYLIB) throw new MachOException("LC_ID_DYLIB cmd != 0xD");
-
+	MachO.assert(cmd.cmd == MachO.CMD_ID_DYLIB, "LC_ID_DYLIB cmd != 0xD");
 	var reader = new DataReader(cmd.data);
-
 	this.__cmd = cmd;
 	this.name_offset = reader.getUint32();
 	this.timestamp = reader.getUint32();
 	this.current_version = reader.getUint32();
 	this.compatibility_version = reader.getUint32();
-
 	// the offset if from the start of the command,
 	// and the data we get starts after command header which
 	// is 8 bytes long
 	this.name = reader.getStrAt(this.name_offset - 8);
-}
+};
 
-var MachO_LC_SYMTAB = function (cmd) {
 
-	if (cmd.cmd != 2) throw new MachOException("LC_SYMTAB cmd != 2");
+var SymbolTableCommand = function (cmd) {
 
+	MachO.assert(cmd.cmd == MachO.CMD_SYMTAB, "LC_SYMTAB cmd != 2");
 	var reader = new DataReader(cmd.data);
 	this.__cmd = cmd;
-	this.symoff   = reader.getUint32();
-	this.nsyms	  = reader.getUint32();
-	this.stroff   = reader.getUint32();
-	this.strsize  = reader.getUint32();
-}
+	this.symoff   = reader.getUint32(); // Offset of the symbol
+	this.nsyms	  = reader.getUint32(); // Number of symbols
+	this.stroff   = reader.getUint32(); // Offset of the string
+	this.strsize  = reader.getUint32(); // Length of the string
+};
 
-MachO_LC_SYMTAB.prototype.loadStrings = function (mach) {
 
-	var reader = new DataReader(mach.data);
+SymbolTableCommand.prototype.loadStrings = function (data) {
+
+	var reader = new DataReader(data);
 	reader.move(this.stroff);
-
 	this.strings = [];
-
 	for (var i=0; reader.pos < this.stroff + this.strsize; i++) {
 		this.strings[i] = reader.getStr();
 	}
-}
+};
 
-MachO_LC_SYMTAB.prototype.loadSymbols = function (data) {
+SymbolTableCommand.prototype.loadSymbols = function (data) {
 
 	var reader = new DataReader(data);
 	reader.move(this.symoff);
 
 	this.nlists = [];
-
-	for (var i=0; i<this.nsyms; i++) {
-		let nlist = new nlist_64(reader);
+	
+	for (var i=0; i< this.nsyms; i++) {
+		let nlist = new Nlist64(reader);
 		nlist.name = reader.getStrAt(this.stroff + nlist.n_strx);
 		this.nlists.push(nlist);
 	}
-}
+};
 
-MachO_LC_SYMTAB.prototype.getByIndex = function(idx) {
+SymbolTableCommand.prototype.getByIndex = function(idx) {
 
 	if (idx > this.nlists.length) 
 		return "<error>";
+	return this.nlists[idx].name; // Get string at index
+};
 
-	return this.nlists[idx].name;
-}
+var DynamicSymbolTableCommand = function (cmd) {
 
-MachO_LC_DYSYMTAB = function (cmd) {
-
-	if (cmd.cmd != MachO.CMD_DYSYMTAB) throw new MachOException("LC_SYMTAB cmd != 0xB");
-
+	MachO.assert(cmd.cmd == MachO.CMD_DYSYMTAB,"LC_SYMTAB cmd != 0xB");
 	var reader = new DataReader(cmd.data);
-
 	this.__cmd = cmd;
 	this.ilocalsym = reader.getUint32();
 	this.nlocalsym = reader.getUint32();
@@ -144,18 +167,15 @@ MachO_LC_DYSYMTAB = function (cmd) {
 	this.nextrel = reader.getUint32();
 	this.locreloff = reader.getUint32();
 	this.nlocrel = reader.getUint32();
-}
+};
 
-MachO_LC_SEGMENT_64 = function (cmd) {
 
-	if (cmd.cmd != MachO.CMD_SEGMENT_64) throw new MachOException("LC_SYMTAB cmd != 0xD");
-
+var SegmentCommand64 = function (cmd) {
+	MachO.assert(cmd.cmd == MachO.CMD_SEGMENT_64);
 	var reader = new DataReader(cmd.data);
-
 	this.__cmd = cmd;
 	this.segname = reader.getStrAt(0);
 	reader.skip(0x10);
-
 	this.vmaddr = reader.getF64();
 	this.vmsize = reader.getF64();
 	this.fileoff = reader.getF64();
@@ -164,23 +184,18 @@ MachO_LC_SEGMENT_64 = function (cmd) {
 	this.initprot = reader.getUint32();
 	this.nsects = reader.getUint32();
 	this.flags = reader.getUint32();
-
 	this.sections = [];
-
 	for (var i=0; i<this.nsects; i++) {
-		this.sections[i] = new MachO_LC_SECTION_64(reader.getBlob(MachO.SECTION_SIZE));
+		this.sections[i] = new Section64(reader.getBlob(MachO.SECTION_SIZE));
 	}
-}
+};
 
-MachO_LC_SECTION_64 = function (data) {
-
+var Section64 = function (data) {
 	var reader = new DataReader(data);
-
 	this.sectname = reader.getStrAt(0);
 	reader.skip(0x10);
 	this.segname = reader.getStrAt(0x10);
 	reader.skip(0x10);
-
 	this.addr = reader.getF64();
 	this.size = reader.getF64();
 	this.offset = reader.getUint32();
@@ -191,42 +206,19 @@ MachO_LC_SECTION_64 = function (data) {
 	this.reserved1 = reader.getUint32();
 	this.reserved2 = reader.getUint32();
 	this.reserved3 = reader.getUint32();
-}
+};
 
 
-// @data is Uint8Array
-//
-var MachO = function (data) {
-	this.data = data;
-	this.reader = new DataReader(data);
-	this.symtab = null;
-}
-
-// XXX: we should cache all the loads like symbols table, commands etc.
-// cause rereading the symbols table might take a while
-
-MachO.HEADER_SIZE  = 0x10;
-MachO.CMD_SIZE	   = 0x48;
-MachO.SECTION_SIZE = 0x50;
-MachO.CMD_SYMTAB     = 2;
-MachO.CMD_DYSYMTAB   = 0xB;
-MachO.CMD_SEGMENT_64 = 0x19;
-MachO.CMD_DYLD_INFO  = 0x80000022
-MachO.CMD_ID_DYLIB    = 0xD;
-MachO.S_NON_LAZY_SYMBOL_POINTERS = 0x6;
-MachO.S_LAZY_SYMBOL_POINTERS = 0x7;
-MachO.SECTION_TYPE   = 0x000000ff
-MachO.PTR_SIZE = 8;
 
 
 MachO.prototype.parseHeader = function () {
-	this.header = new MachO_HEADER(this.reader);
+	this.header = new MachHeader(this.reader);
 	this.cmds	= [];
 
-	for (var i=0; i<this.header.ncmds; i++) {
-		this.cmds[i] = new MachO_LC(this.reader);
+	for (var i=0; i<this.header.ncmds && i < 300; i++) {
+		this.cmds[i] = new LoadCommand(this.reader);
 	}
-}
+};
 
 MachO.prototype.get_SYMTAB = function () {
 
@@ -234,35 +226,35 @@ MachO.prototype.get_SYMTAB = function () {
 
 	for (cmd of this.cmds) {
 		if (cmd.cmd == MachO.CMD_SYMTAB) {
-			this.symtab = new MachO_LC_SYMTAB(cmd);
+			this.symtab = new SymbolTableCommand(cmd);
 			return this.symtab;
 		}
 	}
-}
+};
 
 MachO.prototype.get_DYSYMTAB = function () {
 	for (cmd of this.cmds) {
 		if (cmd.cmd == MachO.CMD_DYSYMTAB) {
-			return new MachO_LC_DYSYMTAB(cmd);
+			return new DynamicSymbolTableCommand(cmd);
 		}
 	} 
-}
+};
 
 MachO.prototype.get_DYLD_INFO = function () {
 	for (cmd of this.cmds) {
 		if (cmd.cmd == MachO.CMD_DYLD_INFO) {
-			return new MachO_LC_DYLD_INFO(cmd);
+			return new DyldInfoCommand(cmd);
 		}
 	} 
-}
+};
 
 MachO.prototype.getTEXT = function () {
 	for (cmd of this.cmds) {
 		if (cmd.cmd == MachO.CMD_SEGMENT_64) {
-			let lc_segment = new MachO_LC_SEGMENT_64(cmd)
-				if (lc_segment.segname == "__TEXT") {
-					return lc_segment;
-				}
+			var lc_segment = new SegmentCommand64(cmd)
+			if (lc_segment.segname == "__TEXT") {
+				return lc_segment;
+			}
 		}
 	}
 }
@@ -270,31 +262,27 @@ MachO.prototype.getTEXT = function () {
 MachO.prototype.get_SEGMENT_64 = function () {
 	for (cmd of this.cmds) {
 		if (cmd.cmd == MachO.CMD_SEGMENT_64) {
-			return new MachO_LC_SEGMENT_64(cmd);
+			return new SegmentCommand64(cmd);
 		}
 	} 
-}
+};
 
 MachO.prototype.get_LINKEDIT = function () {
-
 	for (cmd of this.cmds) {
-
 		if (cmd.cmd == MachO.CMD_SEGMENT_64) {
-			let segment = new MachO_LC_SEGMENT_64(cmd);
-			if (segment.segname == "__LINKEDIT")
+			var segment = new SegmentCommand64(cmd);
+			if(segment.segname == "__LINKEDIT") {
 				return segment;
+			}
 		}
 	}
-}
+};
 
 MachO.prototype.getSection_NON_LAZY_SYMBOL_POINTERS = function *() {
 
 	for (cmd of this.cmds) {
-
 		if (cmd.cmd == MachO.CMD_SEGMENT_64) {
-
-			let segment = new MachO_LC_SEGMENT_64(cmd);
-
+			var segment = new SegmentCommand64(cmd);
 			for (section of segment.sections) {
 				if ((section.flags & MachO.SECTION_TYPE) ==
 						MachO.S_NON_LAZY_SYMBOL_POINTERS) 
@@ -302,16 +290,12 @@ MachO.prototype.getSection_NON_LAZY_SYMBOL_POINTERS = function *() {
 			}
 		}
 	}
-}
+};
 
 MachO.prototype.getSection_LAZY_SYMBOL_POINTERS = function *() {
-
 	for (cmd of this.cmds) {
-
 		if (cmd.cmd == MachO.CMD_SEGMENT_64) {
-
-			let segment = new MachO_LC_SEGMENT_64(cmd);
-
+			var segment = new SegmentCommand64(cmd);
 			for (section of segment.sections) {
 				if ((section.flags & MachO.SECTION_TYPE) ==
 						MachO.S_LAZY_SYMBOL_POINTERS) 
@@ -319,158 +303,115 @@ MachO.prototype.getSection_LAZY_SYMBOL_POINTERS = function *() {
 			}
 		}
 	}
-}
+};
 
 MachO.prototype.nonLazySymbolAddr = function (name) {
 
-	for (let got of this.getSection_NON_LAZY_SYMBOL_POINTERS()) {
-
+	for (var got of this.getSection_NON_LAZY_SYMBOL_POINTERS()) {
 		var offsetInIndirect = got.reserved1;
-
 		var dyn = this.get_DYSYMTAB();
 		var reader = new DataReader(this.data);
 		reader.move(dyn.indirectsymoff + offsetInIndirect * 4);
-
 		var syms = this.get_SYMTAB();
 		syms.loadSymbols(this.data);
-
 		// XXX: we assume size is small enough to fit into lo of the size
 		if (binHelper.f64hi(got.size) != 0) {
 			throw MachOException("got size is out of bounds");
 		}
-
 		for (var i=0; i < binHelper.f64lo(got.size)/MachO.PTR_SIZE; i++) {
-
 			var idx = reader.getUint32();
-
 			sym = syms.getByIndex(idx);
-
 			if (sym == name) {
 				return got.addr + binHelper.toF64(0, MachO.PTR_SIZE*i);
 			}
 		}
 	}
-}
+};
 
 MachO.prototype.getLocalSym = function (name) {
-
 	var syms = this.get_SYMTAB();
 	syms.loadSymbols(this.data);
-
 	for (var i=0; i<syms.nlists.length; i++) {
 		let nlist = syms.nlists[i];
 		if (name == nlist.name) {
 			return nlist.n_value;
 		}
 	}
-}
+};
 
 MachO.prototype.lazySymbolAddr = function (name) {
-
-	for (let la_symbol_ptr of this.getSection_LAZY_SYMBOL_POINTERS()) {
+	for (var la_symbol_ptr of this.getSection_LAZY_SYMBOL_POINTERS()) {
 		var offsetInIndirect = la_symbol_ptr.reserved1;
-
 		var dyn = this.get_DYSYMTAB();
 		var reader = new DataReader(this.data);
 		reader.move(dyn.indirectsymoff + offsetInIndirect * 4);
-
 		var syms = this.get_SYMTAB();
 		syms.loadSymbols(this.data);
-
 		// XXX: we assume size is small enough to fit into lo of the size
 		if (binHelper.f64hi(la_symbol_ptr.size) != 0) {
 			throw MachOException("la_symbol_ptr size is out of bounds");
 		}
-
 		for (var i=0; i < binHelper.f64lo(la_symbol_ptr.size)/MachO.PTR_SIZE; i++) {
-
 			var idx = reader.getUint32();
-
 			sym = syms.getByIndex(idx);
-
 			if (sym == name) {
 				return la_symbol_ptr.addr + binHelper.toF64(0, MachO.PTR_SIZE*i);
 			}
 		}
 	}
-}
+};
 
 MachO.prototype.getLinkeditStartInProcess = function (slide) {
-
-	let linkedit = this.get_LINKEDIT();
-	let dyld_info  = this.get_DYLD_INFO();
-
-	let offsetInLinkedit = binHelper.toF64(0, dyld_info.export_off) - linkedit.fileoff;
-	let linkeditStart = linkedit.vmaddr + slide;
-
+	var linkedit = this.get_LINKEDIT();
+	var dyld_info  = this.get_DYLD_INFO();
+	var offsetInLinkedit = binHelper.toF64(0, dyld_info.export_off) - linkedit.fileoff;
+	var linkeditStart = linkedit.vmaddr + slide;
 	return linkeditStart + offsetInLinkedit;
-}
+};
 
 MachO.prototype.getLinkeditStartInFile = function () {
-
 	let dyld_info  = this.get_DYLD_INFO();
 	return dyld_info.export_off;
-}
+};
 
 // retrieves a record from Linkedit which is the
 // offset of the symbol counted from the library loading
 // address
-function findSymbolInLinkedit(data, symbol) {
-
+MachO.findSymbolInLinkedit = function(data, symbol) {
 	var reader = new DataReader(data);
-
 	var symbolReader = new DataReader(binHelper.asciiToUint8Array(symbol));
-
-	while (1) {
-
-		let terminalSize = reader.getUint8();
-
-		if (terminalSize > 127) {
-			// TODO: implement re-export case
-			throw MachOException("No re-export");
-		}
-
+	while (true) {
+		var terminalSize = reader.getUint8();
+		MachO.assert(terminalSize <= 127, "No re-export");
 		if (symbolReader.bytesLeft() == 0 && terminalSize != 0) {
 			// skip flags
 			reader.getUint8();
-			let result = reader.F64uleb128();
+			var result = reader.F64uleb128();
 			return result;
 		}
-
 		reader.skip(terminalSize);
-
-		let childrenRemaining = reader.getUint8();
-
-		let nodeOffset = 0;
-
-		let symbolPos = symbolReader.pos;
-
+		var childrenRemaining = reader.getUint8();
+		var nodeOffset = 0;
+		var symbolPos = symbolReader.pos;
 		for (;childrenRemaining > 0; childrenRemaining--) {
-			let wrongEdge = false;
-
-			let ch = reader.getUint8();
-
+			var wrongEdge = false;
+			var ch = reader.getUint8();
 			while (ch != 0) {
-
 				if ( !wrongEdge ) {
 					if ( ch != symbolReader.getUint8() ) {
 						wrongEdge = true;
 					}
 				}
-
 				ch = reader.getUint8();
 			}
-
 			if (wrongEdge) {
 				symbolReader.reset(symbolPos);
-
 				while ((reader.getUint8() & 0x80) != 0);
 			} else {
 				nodeOffset = reader.U32uleb128();
 				break;
 			}
 		}
-
 		if (nodeOffset != 0) {
 			// XXX: check if nodeOffset is too big
 			reader.reset(nodeOffset);
@@ -478,16 +419,16 @@ function findSymbolInLinkedit(data, symbol) {
 			break;
 		}
 	}
-}
+};
 
 MachO.prototype.getName = function () {
 	for (cmd of this.cmds) {
 		if (cmd.cmd == MachO.CMD_ID_DYLIB) {
-			let id = new MachO_LC_ID_DYLIB(cmd);
+			let id = new DylibIDCommand(cmd);
 			return id.name;
 		}
 	} 
-}
+};
 
 MachO.prototype.findSym = function(sym = '')
 {
@@ -504,7 +445,7 @@ MachO.prototype.findSym = function(sym = '')
 	}
 	if(!this.symtab.strings)
 	{
-		this.symtab.loadStrings(this);
+		this.symtab.loadStrings(this.data);
 	}
 	for(i = 0; i < this.symtab.nsyms; i++) {
 		var entry = this.symtab.nlists[i];
@@ -512,15 +453,12 @@ MachO.prototype.findSym = function(sym = '')
 			return entry.n_value;
 		}
 	}
-	
 };
 
 MachO.prototype.guessSyms = function()
 {
-	var syms = new Array();
-
-	try {
-
+	var syms = [];
+	try{
 		if(!this.header)
 		{
 			this.parseHeader();
@@ -528,14 +466,19 @@ MachO.prototype.guessSyms = function()
 		if(!this.symtab){
 			this.get_SYMTAB();
 		}
+		if(!this.symtab)
+		{
+			return syms;
+		}
+		if(!this.symtab.strings)
+		{
+			this.symtab.loadStrings(this.data);
+		}
 		if(!this.symtab.nlists)
 		{
 			this.symtab.loadSymbols(this.data);
 		}
-		if(!this.symtab.strings)
-		{
-			this.symtab.loadStrings(this);
-		}
+
 		for(i = 0; i < this.symtab.nsyms; i++) {
 			var entry = this.symtab.nlists[i];
 			if(entry.name && entry.n_value && (entry.n_type == 15))
@@ -543,24 +486,26 @@ MachO.prototype.guessSyms = function()
 				syms.push({name: entry.name, off: entry.n_value});
 			}
 		}
-	} 
+	}
 	catch(err)
 	{
 		console.error("Failed to guess syms: "+err.message);
 	}
 	return syms;
-	
 };
 
 MachO.prototype.getSegments = function()
 {
+	if(!this.cmds){
+		return;
+	}
 	this.segments = [];
 	for(i = 0; i < this.cmds.length; i++) {
 		var lc = this.cmds[i];
 		if(lc.cmd != LC_SEGMENT_64) {
 			continue;
 		}
-		var sc = new MachO_LC_SEGMENT_64(lc);
+		var sc = new SegmentCommand64(lc);
 		this.segments.push(sc);
 	}
 };
@@ -570,6 +515,9 @@ MachO.prototype.getSegment = function(name = '')
 	if(!this.segments)
 	{
 		this.getSegments();
+	}
+	if(!this.segments){
+		return;
 	}
 	for(i = 0; i < this.segments.length; i++) {
 		var sc = this.segments[i];
@@ -595,33 +543,38 @@ var MachoTool = function MachoTool(filename = '', buffer = new ArrayBuffer())
 {
 	this.filename = filename; // The filename as provided from the input element
 	this.macho = new MachO(buffer); // A new macho instance from the data in the arraybuffer
-	this.macho.parseHeader(); // Try to parse the header
-	this.macho.getSegments(); // Try to get the segments
 	this.symbols = ''; // Cache of symbols
 	this.sections = ''; // Cache of sections
+	this.segments = '';
+
+	this.macho.parseHeader();
+	this.macho.get_SYMTAB();
+
+	this.macho.getSegments();
 
 	// Load and guess all symbols
 	var _syms = this.macho.guessSyms();
-	for(i = 0; i < _syms.length; i++)
-	{
-		if(_syms[i].off.toString(16) != '0x0000000000000000')
+	if(_syms.length){
+		for(i = 0; i < _syms.length; i++)
 		{
-			this.symbols += '#define '+_syms[i].name +' '+_syms[i].off.toString(16)+'\n';
+			if(_syms[i].off.toString(16) != '0x0000000000000000')
+			{
+				this.symbols += '#define '+_syms[i].name +' '+_syms[i].off.toString(16)+'\n';
+			}
 		}
 	}
+	if(this.macho.segments){
 
-	// Gets the sectons and segments
-	for(i = 0; i < this.macho.segments.length; i++){
-		if(!this.segments) {
-			this.segments = '';
-		}
-		this.segments += this.macho.segments[i].segname+': '+this.macho.segments[i].vmaddr.toString(16)+'\n';
-		for(j = 0; j < this.macho.segments[i].sections.length; j++){
-			if(!this.sections)
-			{
-				this.sections = '';
+		// Gets the sectons and segments
+		for(i = 0; i < this.macho.segments.length; i++){
+			this.segments += this.macho.segments[i].segname+': '+this.macho.segments[i].vmaddr.toString(16)+'\n';
+			for(j = 0; j < this.macho.segments[i].sections.length; j++){
+				if(!this.sections)
+				{
+					this.sections = '';
+				}
+				this.sections+=(this.macho.segments[i].segname+"."+this.macho.segments[i].sections[j].sectname +': '+this.macho.segments[i].sections[j].addr.toString(16)+'\n');
 			}
-			this.sections+=(this.macho.segments[i].segname+"."+this.macho.segments[i].sections[j].sectname +': '+this.macho.segments[i].sections[j].addr.toString(16)+'\n');
 		}
 	}
 };
@@ -630,6 +583,10 @@ MachoTool.prototype.disasm = function()
 {
 	var _failmsg = "Failed to disassemble ";
 	
+	if(!this.macho.cmds){
+		return;
+	}
+
 	var __TEXT_EXEC = this.macho.getSegment('__TEXT_EXEC');
 	var __KLD = this.macho.getSegment('__KLD');
 	var __TEXT = this.macho.getTEXT();
@@ -679,7 +636,24 @@ MachoTool.prototype.disasm = function()
 				var instlines = [];
 		   		for(i = 0; i < instructions.length; i++)
 		   		{
-		   			instlines.push(Add(sect.addr, new Int64(instructions[i].address)).toString(16)+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
+		   			
+		   			var addr = Add(sect.addr, new Int64(instructions[i].address)).toString(16);
+		   			var fname = '';
+		   			try{
+		   				fname = this.symbols.slice(this.symbols.indexOf(addr)-(addr.length),(addr.length)).split(' ')[1];
+		   			}
+		   			catch(ex)
+		   			{
+		   				console.log(ex);
+		   				fname = '';
+		   			}
+		   			if(fname){
+		   				addr = '\n\n'+fname+'\n'+addr;
+		   			}
+		   			if(instructions[i].mnemonic=='ret'){
+		   				instructions[i].op_str+='\n';
+		   			}
+		   			instlines.push(addr+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
 		   		}
 		   		this.instructions += '__KLD.'+sect.sectname+': \n\n'+instlines.join('\n')+'\n\n';
 		   }
@@ -701,9 +675,26 @@ MachoTool.prototype.disasm = function()
 				var instructions = capst.disasm(this.macho.reader.getBlobAtOffset(sect.offset, maxsize), maxsize, sect.addr.toString(16));
 				capst.close();
 				var instlines = [];
-		   		for(i = 0; i < instructions.length; i++)
+				for(i = 0; i < instructions.length; i++)
 		   		{
-		   			instlines.push(Add(sect.addr, new Int64(instructions[i].address)).toString(16)+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
+		   			
+		   			var addr = Add(sect.addr, new Int64(instructions[i].address)).toString(16);
+		   			var fname = '';
+		   			try{
+		   				fname = this.symbols.slice(this.symbols.indexOf(addr)-(addr.length),(addr.length)).split(' ')[1];
+		   			}
+		   			catch(ex)
+		   			{
+		   				console.log(ex);
+		   				fname = '';
+		   			}
+		   			if(fname){
+		   				addr = '\n\n'+fname+'\n'+addr;
+		   			}
+		   			if(instructions[i].mnemonic=='ret'){
+		   				instructions[i].op_str+='\n';
+		   			}
+		   			instlines.push(addr+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
 		   		}
 		   		this.instructions += '__TEXT_EXEC.'+sect.sectname+': \n\n'+instlines.join('\n')+'\n\n';
 		   }
@@ -726,8 +717,25 @@ MachoTool.prototype.disasm = function()
 				var instructions = capst.disasm(this.macho.reader.getBlobAtOffset(sect.offset, maxsize), maxsize, sect.addr.toString(16));
 				capst.close();
 				var instlines = [];
-		   		for(i = 0; i < instructions.length; i++)
+				for(i = 0; i < instructions.length; i++)
 		   		{
+		   			
+		   			var addr = Add(sect.addr, new Int64(instructions[i].address)).toString(16);
+		   			var fname = '';
+		   			try{
+		   				fname = this.symbols.slice(this.symbols.indexOf(addr)-(addr.length),(addr.length)).split(' ')[1];
+		   			}
+		   			catch(ex)
+		   			{
+		   				console.log(ex);
+		   				fname = '';
+		   			}
+		   			if(fname){
+		   				addr = '\n\n'+fname+'\n'+addr;
+		   			}
+		   			if(instructions[i].mnemonic=='ret'){
+		   				instructions[i].op_str+='\n';
+		   			}
 		   			instlines.push(Add(sect.addr,instructions[i].address).toString(16)+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
 		   		}
 		   		this.instructions += '__TEXT.'+sect.sectname+': \n\n'+instlines.join('\n')+'\n\n';
@@ -743,11 +751,74 @@ MachoTool.prototype.disasm = function()
 MachoTool.prototype.download = function()
 {
 	var dlink = document.createElement('a');
-	dlink.href = window.URL.createObjectURL(new Blob([mtool.macho.data], {type: 'application/octet-stream'}));
+	dlink.href = window.URL.createObjectURL(new Blob([this.macho.data], {type: 'application/octet-stream'}));
 	dlink.download = this.filename+".patched";
 	document.body.appendChild(dlink);	
 	dlink.click();
 	document.body.removeChild(dlink);
+};
+
+MachoTool.prototype.findMachoNames = function()
+{
+	if(this.machos){
+		for(k = 0; k < this.machos.length; k++)
+		{
+			var current = this.machos[k];
+			var seg = current.macho.getSegment('__TEXT');
+			for(l = 0; l < seg.sections.length; l++)
+			{
+				var sect = seg.sections[l];
+				if(sect.sectname == "__cstring")
+				{
+					var off = sect.offset;
+					var size = sect.size.asInt32();
+					var name = current.macho.data.slice(off, off+size).asString().split('\x00')[0];
+					this.machos[k].filename = name;
+					break;
+				}
+			}
+		}
+	}
+};
+
+MachoTool.prototype.findAllMachos = function(stdout)
+{
+	stdout.innerText = "Finding additional mach-o files...";
+	this.machos = [];
+	this.currentMachoNum = 0;
+	this.machofinder = setInterval(
+		function(mtool, stdout){
+			var buf = mtool.macho.data;
+			var i = mtool.currentMachoNum;
+			mtool.machopercent = "("+((i/buf.byteLength)*100).toFixed(2)+"%)";
+			var _threshold = 4000;
+			try {
+				for(j = i+_threshold; j > i; j--){
+					if(mtool.currentMachoNum >= buf.byteLength){
+						mtool.currentMachoNum = "done";
+						stdout.innerText = "Found "+mtool.machos.length+" macho files!";
+						setTimeout(function(mtool){mtool.findMachoNames();},0.01,mtool);
+						clearInterval(mtool.machofinder);
+					}
+					var magic = new RWView(buf.slice(j, j+sizeof(uint32_t)).buffer);
+
+					if(magic.getUint32(0, false) == 0xfeedface 
+						|| magic.getUint32(0, false) == 0xfeedfacf
+						|| magic.getUint32(0, true) == 0xfeedface
+						|| magic.getUint32(0, true) == 0xfeedfacf
+					) {
+					
+						mtool.machos.push(new MachoTool('macho-'+mtool.machos.length, buf.slice(j, buf.byteLength)));
+						stdout.innerText = "Found new mach-o at offset: 0x"+(j.toString(16));
+					}
+				}
+			}
+			catch(err){
+				mtool.currentMachoNum+=sizeof(uint32_t);
+			}
+			mtool.currentMachoNum+=(_threshold*sizeof(uint32_t));
+		}, 
+	0.00, this, stdout);
 };
 
 Object.AsHTML = function(obj, name) {

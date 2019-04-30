@@ -56,6 +56,7 @@
 	<script type="text/javascript" src="int64.js"></script>
 	<script type="text/javascript" src="rwview.js"></script>
 	<script type="text/javascript" src="ibin.js"></script>
+	<script type="text/javascript" src="lzss.js"></script>
 	<script type="text/javascript" src="lzssdec.js"></script>
 	<script type="text/javascript" src="constants.js"></script>
 	<script type="text/javascript" src="macho.js"></script>
@@ -89,59 +90,35 @@
 				stdout.status.innerText = 'Analyzing please wait...';
 				var buf = new uint8_t(this.result);
 				window.machos = [];
-				window.currentMachoNum = 0;
-				window.machofinder = setInterval(function(buf){
-					var i = window.currentMachoNum;
-					window.machopercent = "("+((i/buf.byteLength)*100).toFixed(2)+"%)";
-					window.foundmacho = "";
-					var _threshold = 4000;
-					try {
-						for(j = i+_threshold; j > i; j--){
-							if(window.currentMachoNum >= buf.byteLength){
-								stdout.status.innerText = "Found "+window.machos.length+" in the binary!";
-								window.currentMachoNum = "done";
-								clearInterval(window.machofinder);
-							}
-							var magic = new RWView(buf.slice(j, j+sizeof(uint32_t)).buffer);
-
-							if(magic.getUint32(0, false) == 0xfeedface 
-								|| magic.getUint32(0, false) == 0xfeedfacf
-								|| magic.getUint32(0, true) == 0xfeedface
-								|| magic.getUint32(0, true) == 0xfeedfacf
-							) {
-							
-								window.machos.push(new MachoTool('macho-'+window.machos.length, buf.slice(j, buf.byteLength)));
-								window.foundmacho= "Found new mach-o at offset: 0x"+j.toString(16);
-							}
-						}
-					}
-					catch(err){
-						window.currentMachoNum+=sizeof(uint32_t);
-					}
-					window.currentMachoNum+=(_threshold*sizeof(uint32_t));
-					stdout.status.innerText = window.foundmacho+" "+"Kext / Submacho analysis: "+window.machopercent;
-
-				}, 0.00, buf);
 				if(LZSSDec.dectect(buf.buffer)){
 					stdout.status.innerText = 'We got a compressed kernelcache, decompressing it...';
 					alert('Feeding me a compressed kernelcache? No problem we got lzssdec!');
-					setTimeout(function(buf){
-						var filesize = new pointer_t(sizeof(uint32_t));
-						var x = LZSSDec.prototype.tryLZSS(buf.buffer, new uint32_t(filesize), stdout.status, function(buf){
-							window.mtool = new MachoTool(filename, buf);
-							stdout.status.innerText = 'Sucessfully analyzed and disassembled mach-o.';
-							stdout.downloadbtn.onclick = function(){window.mtool.download();};
-							mtool.disasm();
-							updateUI(mtool);
-						});
-					},0.1, buf);
+					var filesize = new pointer_t(sizeof(uint32_t));
+					window.lzss_src = LZSSDec.prototype.tryLZSS(buf.buffer, new uint32_t(filesize), stdout.status).asString();
+					window.lzss_dst = lzjs.decompress(window.lzss_src).asArrayBuffer();
+					window.mtool = new MachoTool(filename, new uint8_t(window.lzss_dst));
+					if(window.mtool.macho.header.magic != 0xfeedface && window.mtool.macho.header.magic != 0xfeedfacf && window.mtool.macho.header.magic != 0xcffaedfe && window.mtool.macho.header.magic != 0xcefaedfe){
+						stdout.status.innerText = 'Invalid mach-o.';
+						return;
+					}
+					stdout.status.innerText = 'Sucessfully analyzed and disassembled mach-o.';
+					stdout.downloadbtn.onclick = function(){window.mtool.download();};
+					window.mtool.disasm();
+					updateUI(mtool);
+					window.mtool.findAllMachos(stdout.status);
 				}
 				else
 				{
 					window.mtool = new MachoTool(filename, buf);
+					if(window.mtool.macho.header.magic != 0xfeedface && window.mtool.macho.header.magic != 0xfeedfacf && window.mtool.macho.header.magic != 0xcffaedfe && window.mtool.macho.header.magic != 0xcefaedfe){
+						stdout.status.innerText = 'Invalid mach-o.';
+						return;
+					}
+					stdout.status.innerText = 'Sucessfully analyzed and disassembled mach-o.';
 					stdout.downloadbtn.onclick = function(){window.mtool.download();};
-					mtool.disasm();
+					window.mtool.disasm();
 					updateUI(mtool);
+					window.mtool.findAllMachos(stdout.status);
 				}
 				//mtool = undefined;
 				//buf = undefined;
