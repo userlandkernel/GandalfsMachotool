@@ -21,5 +21,5 @@ No beta testers yet.
 
 Contributors (in no particular order)
 =====================================
-(Please let us know if you want to have your name here)
+(Please let us know if you want to have your name here)  
  Alexandro Sanchez (@AlexTea) (original port of Capstone.js)
