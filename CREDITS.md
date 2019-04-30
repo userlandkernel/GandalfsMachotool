@@ -3,8 +3,8 @@ This file credits all the contributors of the GandalfsMachotool project.
 Key developers
 ==============
 1. Sem Voigtländer
-	- Core Project
-	- Contributed to Capstone.js
+  - Core Project
+  - Contributed to Capstone.js
   - LimpelZivSeventySeven
   - MachoTool
   - RWView
