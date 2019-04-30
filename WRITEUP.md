@@ -2,6 +2,7 @@
 Mach-O is a fileformat commonly used in Apple's Operating Systems such as iOS and macOS.  
 The fileformat consists of a header and loadcommands that serve as hint for the structure of the binary made up from segments with sections.  
 One segment for example is the symbol table which contains references of all unstripped symbols with their code locations and string locations.  
+If you want to [Learn more about mach-o](https://github.com/aidansteele/osx-abi-macho-file-format-reference) you can click on the link.  
 
 ## The flow of a mach-o analysis tool
 1. Load binary data.  
