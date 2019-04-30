@@ -4,18 +4,33 @@
 	<title>Mach-O Parser</title>
 	<link rel="stylesheet" href="gandalf.css" type="text/css" />
 	<script type="text/javascript">
-		function dload(name)
+		function dload(name, open = false)
 		{
+			var e = document.getElementById(name);
 			var _a = document.createElement('a'); 
-			_a.href=window.URL.createObjectURL(
-				new Blob([
-					new TextEncoder().encode(document.getElementById(name).value)],
-					{
-						'content-type':'text/plain'
-					}
-				)
-			);
-			_a.download=mtool.filename+'.'+name+'.txt';
+			_a.target = '_blank';
+			if(e.src){
+				_a.href = e.src;
+			} else {
+				_a.href=window.URL.createObjectURL(
+					new Blob([
+						new TextEncoder().encode(e.value)],
+						{
+							type:'text/plain'
+						}
+					)
+				);
+			}
+			if(!open){
+				if(name=='symbols'){
+					_a.download=mtool.filename+'.'+name+'.h';
+				} else if(name=='disasm'){
+					_a.download=mtool.filename+'.'+name+'.asm';
+
+				} else {
+					_a.download=mtool.filename+'.'+name+'.txt';
+				}
+			}
 			_a.click();
 		}
 	</script>
@@ -35,22 +50,22 @@
 		<button id="findsym">Find</button><button id="download">Download</button>
 		<br/>
 		<br/>
-		<h3>Segments</h3> <button onclick="dload('segments');">Open</button>
-		<textarea id="segments">
+		<h3>Segments</h3> <button onclick="dload('segments', true);">Open</button> <button onclick="dload('segments');">Download</button>
+		<iframe id="segments">
 			
-		</textarea>
-		<h3>Sections</h3> <button onclick="dload('sections');">Open</button>
-		<textarea id="sections">
+		</iframe>
+		<h3>Sections</h3> <button onclick="dload('sections', true);">Open</button> <button onclick="dload('sections');">Download</button>
+		<iframe id="sections">
 			
-		</textarea>
-		<h3>Symbols</h3> <button onclick="dload('symbols');">Open</button>
-		<textarea id="symbols">
+		</iframe>
+		<h3>Symbols</h3> <button onclick="dload('symbols', true);">Open</button> <button onclick="dload('symbols');">Download</button>
+		<iframe id="symbols">
 			
-		</textarea>
-		<h3>Disassembly</h3> <button onclick="dload('disasm');">Open</button>
-		<textarea id="disasm">
+		</iframe>
+		<h3>Disassembly</h3> <button onclick="dload('disasm', true);">Open</button> <button onclick="dload('disasm');">Download</button>
+		<iframe id="disasm">
 			
-		</textarea>
+		</iframe>
 	</section>
 	<script type="text/javascript" src="capstone.min.js"></script>
 	<script type="text/javascript" src="int64.js"></script>
@@ -79,10 +94,10 @@
 			var updateUI = function(mtool)
 			{
 				stdout.context.removeAttribute('class');
-				stdout.disasm.value = mtool.instructions;
-				stdout.segments.value = mtool.segments;
-				stdout.symbols.value = mtool.symbols;
-				stdout.sections.value = mtool.sections;
+				stdout.disasm.src = MachoTool.bloblink(mtool.instructions);
+				stdout.segments.src =  MachoTool.bloblink(mtool.segments);
+				stdout.symbols.src =  MachoTool.bloblink(mtool.symbols);
+				stdout.sections.src =  MachoTool.bloblink(mtool.sections);
 				stdout.status.innerText = 'Sucessfully analyzed and disassembled mach-o.';
 			};
 			
@@ -105,7 +120,7 @@
 					stdout.downloadbtn.onclick = function(){window.mtool.download();};
 					window.mtool.disasm();
 					updateUI(mtool);
-					window.mtool.findAllMachos(stdout.status);
+					window.mtool.findAllMachos(stdout.status, stdout.disasm);
 				}
 				else
 				{
@@ -118,7 +133,7 @@
 					stdout.downloadbtn.onclick = function(){window.mtool.download();};
 					window.mtool.disasm();
 					updateUI(mtool);
-					window.mtool.findAllMachos(stdout.status);
+					window.mtool.findAllMachos(stdout.status, stdout.disasm);
 				}
 				//mtool = undefined;
 				//buf = undefined;

@@ -2,6 +2,7 @@
  * MachO javascript
  * Written by Kudima, extended by Sem Voigtländer.
 */
+
 var MachOException = function MachOException(msg=''){
 	this.message = msg.toString(16);
 	this.stack = (new Error()).stack;
@@ -539,30 +540,74 @@ MachO.prototype.findCodeSegment = function()
 	}
 };
 
+
+
+
 var MachoTool = function MachoTool(filename = '', buffer = new ArrayBuffer())
 {
 	this.filename = filename; // The filename as provided from the input element
-	this.macho = new MachO(buffer); // A new macho instance from the data in the arraybuffer
+	this.buffer = buffer;
+	this.macho = new MachO(this.buffer); // A new macho instance from the data in the arraybuffer
 	this.symbols = ''; // Cache of symbols
 	this.sections = ''; // Cache of sections
 	this.segments = '';
-
+	this.instructions = '';
+	this.getEndianess();
 	this.macho.parseHeader();
+	this.getArch();
 	this.macho.get_SYMTAB();
-
 	this.macho.getSegments();
 
 	// Load and guess all symbols
-	var _syms = this.macho.guessSyms();
-	if(_syms.length){
-		for(i = 0; i < _syms.length; i++)
-		{
-			if(_syms[i].off.toString(16) != '0x0000000000000000')
+	this.getSymbols();
+	this.getSegments();
+	
+};
+
+MachoTool.bloblink = function(str = '')
+{
+	return window.URL.createObjectURL(
+		new Blob([
+			new TextEncoder().encode(str)],
 			{
-				this.symbols += '#define '+_syms[i].name +' '+_syms[i].off.toString(16)+'\n';
+				type:'text/plain'
+			}
+		)
+	);
+};
+
+MachoTool.prototype.reparse = function()
+{
+	this.macho = new MachO(this.buffer);
+	this.symbols = '';
+	this.segments = '';
+	this.sections = '';
+	this.instructions = '';
+	this.getEndianess();
+	this.macho.parseHeader();
+	this.getArch();
+	this.macho.get_SYMTAB();
+	this.macho.getSegments();
+	this.getSegments();
+	this.getSymbols();
+};
+
+MachoTool.prototype.getSymbols = function()
+{
+	this.macho.symbols = this.macho.guessSyms();
+	if(this.macho.symbols) {
+
+		for(i = 0; i < this.macho.symbols.length; i++) {
+			if(this.macho.symbols[i].off.toString(16) != '0x0000000000000000')
+			{
+				this.symbols += '#define '+ this.macho.symbols[i].name +' '+ this.macho.symbols[i].off.toString(16)+'\n';
 			}
 		}
 	}
+};
+
+MachoTool.prototype.getSegments = function()
+{
 	if(this.macho.segments){
 
 		// Gets the sectons and segments
@@ -579,172 +624,167 @@ var MachoTool = function MachoTool(filename = '', buffer = new ArrayBuffer())
 	}
 };
 
-MachoTool.prototype.disasm = function()
+MachoTool.prototype.getArch = function()
+{
+	switch(lastbit(this.macho.header.magic))
+	{
+		case 0xf:
+			console.info("Detected 64-bit mach-o");
+			this.arch = cs.ARCH_ARM64;
+			break;
+
+		case 0xe:
+			console.info("Detected 32-bit mach-o");
+			this.arch = cs.ARCH_ARM;
+			break;
+
+		default:
+			console.warn("Unable to detect architecture, are you sure this is mach-o?");
+			this.arch = 'unknown';
+			break;
+	}
+	return this.arch;
+};
+
+MachoTool.prototype.getEndianess = function()
+{
+	var m = this.macho.reader.view.view.getUint32(0);
+	switch(m){
+		case 0xfeedface:
+			console.info("Detected MSB mach-o");
+			this.endianess = cs.MODE_BIG_ENDIAN;
+			break;
+		case 0xfeedfacf:
+			console.info("Detected MSB mach-o");
+			this.endianess = cs.MODE_BIG_ENDIAN;
+			break;
+		case 0xcefaedfe:
+			console.info("Detected LSB mach-o");
+			this.endianess = cs.MODE_LITTLE_ENDIAN;
+			break;
+		case 0xcffaedfe:
+			console.info("Detected LSB mach-o");
+			this.endianess = cs.MODE_LITTLE_ENDIAN;
+			break;
+
+		default:
+			console.warn("Unable to detect endianess, are you sure this is mach-o?");
+			this.endianess = 'unknown';
+			break;
+	}
+	return this.endianess;	
+};
+
+MachoTool.prototype.disasmSegment = function(segname='')
 {
 	var _failmsg = "Failed to disassemble ";
+	var seg = this.macho.getSegment(segname); //retrieve the segment with the given name
+	if(!seg)
+	{
+		console.info("No such segment: '"+segname+"'."); //the segment must be found otherwise we have nothing to disassemble
+		return;
+	}
+	
+	try {
+		console.info("Disassembling "+seg.segname);
+
+		// We want to attempt the disassembly of all sections in the given segment
+		for(var i = 0; i < seg.nsects; i++) {
+			console.info("Initialized capstone for "+seg.segname+'.'+seg.sections[i].sectname);
+			
+			var capst = new cs.Capstone(this.arch, this.endianess); // Initialize the disassembler
+			
+			var sect = seg.sections[i]; //store the current section
+
+			var maxsize = sect.size.asInt32(); //get the size of the section, remember this is an Int64 casted to an int32
+	//		if(maxsize > UINT32_MAX) {
+		//		maxsize = UINT32_MAX; // If we exceed this size errors will start to occur and capstone will fail
+		//	}
+
+			var instructions = [];
+
+			// Not all sections contain code
+			// Luckily we can be lazy as capstone disassembly will fail when the section does not
+			// We simply handle the exception and skip the section
+			try {
+				var code = this.macho.reader.getBlobAtOffset(sect.offset, maxsize); // We only need to disassemble the section
+				instructions = capst.disasm(code, maxsize, 0);
+			}
+			catch(x) {
+				console.info("Skipping "+seg.segname+'.'+seg.sections[i].sectname);
+				console.log(x);
+				continue;
+			}
+
+			var instlines = []; // We temporary need to store all instructions
+
+			console.info("Closed capstone for "+seg.segname+'.'+seg.sections[i].sectname);
+			capst.close(); // The disassembler is not needed anymore at this point, we can terminate it to refresh memory
+
+			// We need to loop through each instruction to see if it is a function with a symbol
+			for(j = 0; j < instructions.length; j++) {
+				var inst = instructions[j];
+				var addr = Add(sect.addr, new Int64(inst.address)).toString(16); // We want to have the real address, not the limited one
+	   			var fname = '';
+	   			
+	   			try{
+	   				fname = this.symbols.slice(this.symbols.indexOf(addr)-(addr.length),(addr.length)).split(' ')[1]; // try to get the name of the symbol for the current address
+	   			}
+	   			catch(ex)
+	   			{
+	   				console.log(ex); // we do not seem to have a symbol for the address
+	   				fname = '';
+	   			}
+
+	   			if(fname){
+	   				addr = '\n\n'+fname+'\n'+addr;
+	   			}
+	   			if(inst.mnemonic=='ret'){
+	   				inst.op_str+='\n';
+	   			}
+	   			instlines.push(addr+': '+inst.mnemonic+ ' '+inst.op_str);
+			}
+			if(instlines.length){
+				this.instructions += sect.segname+'.'+sect.sectname+': \n\n'+instlines.join('\n')+'\n\n';
+			}
+		}
+	} 
+	catch(err)
+	{
+		console.warn(_failmsg+seg.segname+": "+err.message+'\n'+err.stack);
+		throw err;
+	}
+
+	
+};
+
+MachoTool.prototype.disasmAll = function(stdout)
+{
+	this.instructions = '';
+	this.disasm();
+	for(macho of this.machos){
+
+		if(!macho.macho.cmds){
+			return;
+		}
+		macho.instructions=macho.filename+'\n'+(('-').repeat(20))+'\n';
+		for(var seg of macho.macho.segments) {
+			macho.disasmSegment(seg.segname);
+		}
+		this.instructions+=macho.instructions;
+	}
+	stdout.src = MachoTool.bloblink(this.instructions);
+};
+
+MachoTool.prototype.disasm = function()
+{
 	
 	if(!this.macho.cmds){
 		return;
 	}
-
-	var __TEXT_EXEC = this.macho.getSegment('__TEXT_EXEC');
-	var __KLD = this.macho.getSegment('__KLD');
-	var __TEXT = this.macho.getTEXT();
-	
-	var getcapstone = function(macho)
-	{
-		var capstone = {};
-		if(lastbit(macho.header.magic) == 0xf)
-		{
-			console.info("Detected 64-bit mach-o");
-			try {
-				capstone = new cs.Capstone(cs.ARCH_ARM64, cs.MODE_LITTLE_ENDIAN);
-				console.info("Initialized capstone.");
-			}
-			catch(err)
-			{
-
-			}
-		}
-		else if(lastbit(macho.header.magic) == 0xe)
-		{
-			console.info("Detected 32-bit mach-o");
-			try {
-				capstone = new cs.Capstone(cs.ARCH_ARM, cs.MODE_LITTLE_ENDIAN);
-				console.info("Initialized capstone.");
-			}
-			catch(err)
-			{
-
-			}
-		}
-		return capstone;
-	};
-
-	this.instructions = '';
-	if(__KLD) {
-		try {
-			for(i = 0; i < __KLD.nsects; i++){
-				var sect = __KLD.sections[i];
-				var capst = getcapstone(this.macho);
-				var maxsize = sect.size.asInt32();
-				if(maxsize > UINT32_MAX){
-					maxsize = UINT32_MAX;
-				}
-				var instructions = capst.disasm(this.macho.reader.getBlobAtOffset(sect.offset, maxsize), maxsize, sect.addr.toString(16));
-				capst.close();
-				var instlines = [];
-		   		for(i = 0; i < instructions.length; i++)
-		   		{
-		   			
-		   			var addr = Add(sect.addr, new Int64(instructions[i].address)).toString(16);
-		   			var fname = '';
-		   			try{
-		   				fname = this.symbols.slice(this.symbols.indexOf(addr)-(addr.length),(addr.length)).split(' ')[1];
-		   			}
-		   			catch(ex)
-		   			{
-		   				console.log(ex);
-		   				fname = '';
-		   			}
-		   			if(fname){
-		   				addr = '\n\n'+fname+'\n'+addr;
-		   			}
-		   			if(instructions[i].mnemonic=='ret'){
-		   				instructions[i].op_str+='\n';
-		   			}
-		   			instlines.push(addr+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
-		   		}
-		   		this.instructions += '__KLD.'+sect.sectname+': \n\n'+instlines.join('\n')+'\n\n';
-		   }
-		}
-		catch(err)
-		{
-			console.warn(_failmsg+"__KLD: "+err.message+'\n'+err.stack);
-		}
-	}
-	if(__TEXT_EXEC) {
-		try {
-			for(i = 0; i < __TEXT_EXEC.nsects; i++){
-				var sect = __TEXT_EXEC.sections[i];
-				var capst = getcapstone(this.macho);
-				var maxsize = sect.size.asInt32();
-				if(maxsize > UINT32_MAX){
-					maxsize = UINT32_MAX;
-				}
-				var instructions = capst.disasm(this.macho.reader.getBlobAtOffset(sect.offset, maxsize), maxsize, sect.addr.toString(16));
-				capst.close();
-				var instlines = [];
-				for(i = 0; i < instructions.length; i++)
-		   		{
-		   			
-		   			var addr = Add(sect.addr, new Int64(instructions[i].address)).toString(16);
-		   			var fname = '';
-		   			try{
-		   				fname = this.symbols.slice(this.symbols.indexOf(addr)-(addr.length),(addr.length)).split(' ')[1];
-		   			}
-		   			catch(ex)
-		   			{
-		   				console.log(ex);
-		   				fname = '';
-		   			}
-		   			if(fname){
-		   				addr = '\n\n'+fname+'\n'+addr;
-		   			}
-		   			if(instructions[i].mnemonic=='ret'){
-		   				instructions[i].op_str+='\n';
-		   			}
-		   			instlines.push(addr+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
-		   		}
-		   		this.instructions += '__TEXT_EXEC.'+sect.sectname+': \n\n'+instlines.join('\n')+'\n\n';
-		   }
-		}
-		catch(err)
-		{
-			console.warn(_failmsg+"__TEXT_EXEC: "+err.message+'\n'+err.stack);
-		}
-	}
-	if(__TEXT)
-	{
-		try {
-			for(i = 0; i < __TEXT.nsects; i++){
-				var sect = __TEXT.sections[i];
-				var capst = getcapstone(this.macho);
-				var maxsize = sect.size.asInt32();
-				if(maxsize > UINT32_MAX){
-					maxsize = UINT32_MAX;
-				}
-				var instructions = capst.disasm(this.macho.reader.getBlobAtOffset(sect.offset, maxsize), maxsize, sect.addr.toString(16));
-				capst.close();
-				var instlines = [];
-				for(i = 0; i < instructions.length; i++)
-		   		{
-		   			
-		   			var addr = Add(sect.addr, new Int64(instructions[i].address)).toString(16);
-		   			var fname = '';
-		   			try{
-		   				fname = this.symbols.slice(this.symbols.indexOf(addr)-(addr.length),(addr.length)).split(' ')[1];
-		   			}
-		   			catch(ex)
-		   			{
-		   				console.log(ex);
-		   				fname = '';
-		   			}
-		   			if(fname){
-		   				addr = '\n\n'+fname+'\n'+addr;
-		   			}
-		   			if(instructions[i].mnemonic=='ret'){
-		   				instructions[i].op_str+='\n';
-		   			}
-		   			instlines.push(Add(sect.addr,instructions[i].address).toString(16)+': '+instructions[i].mnemonic+ ' '+instructions[i].op_str);
-		   		}
-		   		this.instructions += '__TEXT.'+sect.sectname+': \n\n'+instlines.join('\n')+'\n\n';
-		   }
-		}
-		catch(err)
-		{
-			console.warn(_failmsg+"__TEXT: "+err.message+'\n'+err.stack);
-		}
+	this.instructions=this.filename+'\n'+(('-').repeat(20))+'\n';
+	for(var seg of this.macho.segments) {
+		this.disasmSegment(seg.segname);
 	}
 };
 
@@ -781,7 +821,7 @@ MachoTool.prototype.findMachoNames = function()
 	}
 };
 
-MachoTool.prototype.findAllMachos = function(stdout)
+MachoTool.prototype.findAllMachos = function(stdout,disasstdout)
 {
 	stdout.innerText = "Finding additional mach-o files...";
 	this.machos = [];
@@ -797,8 +837,9 @@ MachoTool.prototype.findAllMachos = function(stdout)
 					if(mtool.currentMachoNum >= buf.byteLength){
 						mtool.currentMachoNum = "done";
 						stdout.innerText = "Found "+mtool.machos.length+" macho files!";
-						setTimeout(function(mtool){mtool.findMachoNames();},0.01,mtool);
+						setTimeout(function(mtool,disasstdout){mtool.findMachoNames();mtool.disasmAll(disasstdout);},0.01,mtool,disasstdout);
 						clearInterval(mtool.machofinder);
+						return;
 					}
 					var magic = new RWView(buf.slice(j, j+sizeof(uint32_t)).buffer);
 
@@ -809,7 +850,7 @@ MachoTool.prototype.findAllMachos = function(stdout)
 					) {
 					
 						mtool.machos.push(new MachoTool('macho-'+mtool.machos.length, buf.slice(j, buf.byteLength)));
-						stdout.innerText = "Found new mach-o at offset: 0x"+(j.toString(16));
+						stdout.innerText = ("Found new mach-o at offset: 0x"+(j.toString(16)));
 					}
 				}
 			}
