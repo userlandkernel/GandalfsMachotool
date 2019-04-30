@@ -5,3 +5,5 @@ Usage:
 1. File input with filereader to get an arraybuffer.
 2. Instantiate the MachoTool with an uint8array from the array buffer
 3. Watch the magic :)
+
+Live version available here: https://userlandkernel.github.io/GandalfsMachotool/macho.html
