@@ -103,37 +103,42 @@
 			
 			freader.onload = function() {
 				stdout.status.innerText = 'Analyzing please wait...';
-				var buf = new uint8_t(this.result);
-				window.machos = [];
-				if(LZSSDec.dectect(buf.buffer)){
-					stdout.status.innerText = 'We got a compressed kernelcache, decompressing it...';
-					alert('Feeding me a compressed kernelcache? No problem we got lzssdec!');
-					var filesize = new pointer_t(sizeof(uint32_t));
-					window.lzss_src = LZSSDec.prototype.tryLZSS(buf.buffer, new uint32_t(filesize), stdout.status).asString();
-					window.lzss_dst = lzjs.decompress(window.lzss_src).asArrayBuffer();
-					window.mtool = new MachoTool(filename, new uint8_t(window.lzss_dst));
-					if(window.mtool.macho.header.magic != 0xfeedface && window.mtool.macho.header.magic != 0xfeedfacf && window.mtool.macho.header.magic != 0xcffaedfe && window.mtool.macho.header.magic != 0xcefaedfe){
-						stdout.status.innerText = 'Invalid mach-o.';
-						return;
+				try{
+					var buf = new uint8_t(this.result);
+					window.machos = [];
+					if(LZSSDec.dectect(buf.buffer)){
+						stdout.status.innerText = 'We got a compressed kernelcache, decompressing it...';
+						alert('Feeding me a compressed kernelcache? No problem we got lzssdec!');
+						var filesize = new pointer_t(sizeof(uint32_t));
+						window.lzss_src = LZSSDec.prototype.tryLZSS(buf.buffer, new uint32_t(filesize), stdout.status).asString();
+						window.lzss_dst = lzjs.decompress(window.lzss_src).asArrayBuffer();
+						window.mtool = new MachoTool(filename, new uint8_t(window.lzss_dst));
+						if(window.mtool.macho.header.magic != 0xfeedface && window.mtool.macho.header.magic != 0xfeedfacf && window.mtool.macho.header.magic != 0xcffaedfe && window.mtool.macho.header.magic != 0xcefaedfe){
+							stdout.status.innerText = 'Invalid mach-o.';
+							return;
+						}
+						stdout.status.innerText = 'Sucessfully analyzed and disassembled mach-o.';
+						stdout.downloadbtn.onclick = function(){window.mtool.download();};
+						window.mtool.disasm();
+						updateUI(mtool);
+						window.mtool.findAllMachos(stdout.status, stdout.disasm);
 					}
-					stdout.status.innerText = 'Sucessfully analyzed and disassembled mach-o.';
-					stdout.downloadbtn.onclick = function(){window.mtool.download();};
-					window.mtool.disasm();
-					updateUI(mtool);
-					window.mtool.findAllMachos(stdout.status, stdout.disasm);
-				}
-				else
+					else
+					{
+						window.mtool = new MachoTool(filename, buf);
+						if(window.mtool.macho.header.magic != 0xfeedface && window.mtool.macho.header.magic != 0xfeedfacf && window.mtool.macho.header.magic != 0xcffaedfe && window.mtool.macho.header.magic != 0xcefaedfe){
+							stdout.status.innerText = 'Invalid mach-o.';
+							return;
+						}
+						stdout.status.innerText = 'Sucessfully analyzed and disassembled mach-o.';
+						stdout.downloadbtn.onclick = function(){window.mtool.download();};
+						window.mtool.disasm();
+						updateUI(mtool);
+						window.mtool.findAllMachos(stdout.status, stdout.disasm);
+					}
+				} catch(ex)
 				{
-					window.mtool = new MachoTool(filename, buf);
-					if(window.mtool.macho.header.magic != 0xfeedface && window.mtool.macho.header.magic != 0xfeedfacf && window.mtool.macho.header.magic != 0xcffaedfe && window.mtool.macho.header.magic != 0xcefaedfe){
-						stdout.status.innerText = 'Invalid mach-o.';
-						return;
-					}
-					stdout.status.innerText = 'Sucessfully analyzed and disassembled mach-o.';
-					stdout.downloadbtn.onclick = function(){window.mtool.download();};
-					window.mtool.disasm();
-					updateUI(mtool);
-					window.mtool.findAllMachos(stdout.status, stdout.disasm);
+					alert(ex.message+'\n'+ex.stack);
 				}
 				//mtool = undefined;
 				//buf = undefined;
