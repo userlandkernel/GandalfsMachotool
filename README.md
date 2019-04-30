@@ -6,4 +6,4 @@ Usage:
 2. Instantiate the MachoTool with an uint8array from the array buffer
 3. Watch the magic :)
 
-Live version available here: <a href="https://userlandkernel.github.io/GandalfsMachotool/macho.html" target="_blank" rel="noopener">LIVE VERSION</a>
+Live version available here: <a href="https://userlandkernel.github.io/GandalfsMachotool/" target="_blank" rel="noopener">LIVE VERSION</a>
