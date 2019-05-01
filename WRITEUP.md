@@ -122,7 +122,7 @@ Capstone is fairly easy to implement and it can decode for many processor archit
 Using it was as easy as creating a new instance with the correct architecture and endianess flags.  
 After that disassembly can be done by simply passing a bytearray of instructions.  
 The instructions can be tweaked a bit to make them even more human-readable by adding some newlines after return instructions etc.  
-The updated fork of capstone is on my (@userlandkernel) GitHub.  
+The [updated fork](https://github.com/userlandkernel/capstone.js) of capstone.js is on my (@userlandkernel) GitHub.  
 Example use of capstone is demonstrated below.  
 
 ```javascript
