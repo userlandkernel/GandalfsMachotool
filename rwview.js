@@ -5,6 +5,22 @@
  * Licensed under the MIT License.
 */
 
+// Fix webkit already defined bug?
+delete float;
+delete float32; 
+delete pointer_t;
+delete int64_t;
+delete int32_t;
+delete int16_t;
+delete int8_t;
+delete uint64_t;
+delete uint32_t;
+delete uint16_t;
+delete uint8_t;
+delete char;
+delete size_t;
+delete vm_size_t;
+
 var float = Float64Array;
 var float32 = Float32Array; 
 var pointer_t = ArrayBuffer;
