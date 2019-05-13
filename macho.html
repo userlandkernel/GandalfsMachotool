@@ -77,8 +77,7 @@
 	<script type="text/javascript" src="macho.js"></script>
 	<script type="text/javascript">
 		
-		window.onload = function(e)
-		{
+		window.addEventListener('DOMContentLoaded', (e) => {
 			var stdin = document.getElementById('file');
 			var stdout = {};
 			stdout.context = document.getElementById('macho-utils');
@@ -151,7 +150,7 @@
 			};
 
 			stdin.addEventListener('change', performMachoAnalysis, false);
-		};
+		});
 	</script>
 
 </body>
