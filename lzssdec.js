@@ -232,3 +232,4 @@ LZSSDec.prototype.tryLZSS = function(compressed = new ArrayBuffer(), filesize = 
 	//filesize[0] = rc;
 	return realdata;
 };
+window.LZSSDec = LZSSDec;
