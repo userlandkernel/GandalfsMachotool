@@ -109,7 +109,7 @@
 					try{
 						var buf = new Uint8Array(this.result);
 						window.machos = [];
-						if(LZSSDec.dectect(buf.buffer)){
+						if(LZSSDec.detect(buf.buffer)){
 							stdout.status.innerText = 'We got a compressed kernelcache, decompressing it...';
 							alert('Feeding me a compressed kernelcache? No problem we got lzssdec!');
 							var filesize = new ArrayBuffer(sizeof(Uint32Array));
