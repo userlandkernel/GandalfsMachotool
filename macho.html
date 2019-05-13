@@ -107,15 +107,15 @@
 				freader.onload = function() {
 					stdout.status.innerText = 'Analyzing please wait...';
 					try{
-						var buf = new uint8_t(this.result);
+						var buf = new Uint8Array(this.result);
 						window.machos = [];
 						if(LZSSDec.dectect(buf.buffer)){
 							stdout.status.innerText = 'We got a compressed kernelcache, decompressing it...';
 							alert('Feeding me a compressed kernelcache? No problem we got lzssdec!');
-							var filesize = new pointer_t(sizeof(uint32_t));
-							window.lzss_src = LZSSDec.prototype.tryLZSS(buf.buffer, new uint32_t(filesize), stdout.status).asString();
+							var filesize = new ArrayBuffer(sizeof(Uint32Array));
+							window.lzss_src = LZSSDec.prototype.tryLZSS(buf.buffer, new Uint32Array(filesize), stdout.status).asString();
 							window.lzss_dst = lzjs.decompress(window.lzss_src).asArrayBuffer();
-							window.mtool = new MachoTool(filename, new uint8_t(window.lzss_dst));
+							window.mtool = new MachoTool(filename, new Uint8Array(window.lzss_dst));
 							if(window.mtool.macho.header.magic != 0xfeedface && window.mtool.macho.header.magic != 0xfeedfacf && window.mtool.macho.header.magic != 0xcffaedfe && window.mtool.macho.header.magic != 0xcefaedfe){
 								stdout.status.innerText = 'Invalid mach-o.';
 								return;
