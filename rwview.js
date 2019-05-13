@@ -6,6 +6,8 @@
 */
 
 // Fix webkit already defined bug?
+
+var intjs = {};
 delete float;
 delete float32; 
 delete pointer_t;
@@ -35,14 +37,30 @@ var uint8_t = Uint8Array;
 var char = uint8_t;
 var size_t = uint32_t;
 var vm_size_t = uint32_t;
+
+intjs.float = Float64Array;
+intjs.float32 = Float32Array; 
+intjs.pointer_t = ArrayBuffer;
+intjs.int64_t = BigInt64Array;
+intjs.int32_t = Int32Array;
+intjs.int16_t = Int16Array;
+intjs.int8_t = Int8Array;
+intjs.uint64_t = BigUint64Array;
+intjs.uint32_t = Uint32Array;
+intjs.uint16_t = Uint16Array;
+intjs.uint8_t = Uint8Array;
+intjs.char = uint8_t;
+intjs.size_t = uint32_t;
+intjs.vm_size_t = uint32_t;
+
 // Unsigned int boundaries, thanks to wraparound :)
-var UINT64_MAX = parseInt(new uint64_t(['-1'])[0]); // BigInts are 'kindof' fake in js
+var UINT64_MAX = parseInt(new intjs.uint64_t(['-1'])[0]); // BigInts are 'kindof' fake in js
 var UINT64_MIN = 0;
-var UINT32_MAX = new uint32_t([-1])[0]; //-1 will 'wraparound' to highest uint32
+var UINT32_MAX = new intjs.uint32_t([-1])[0]; //-1 will 'wraparound' to highest uint32
 var UINT32_MIN = 0;
-var UINT16_MAX = new uint16_t([-1])[0];
+var UINT16_MAX = new intjs.uint16_t([-1])[0];
 var UINT16_MIN = 0;
-var UINT8_MAX = new uint8_t([-1])[0];
+var UINT8_MAX = new intjs.uint8_t([-1])[0];
 var UINT8_MIN = 0;
 
 // Signed int boundaries
@@ -57,7 +75,7 @@ var INT8_MIN = -UINT8_MAX;
 
 String.prototype.asArrayBuffer = function()
 {
-	var u8 = new Uint8Array(this.length);
+	var u8 = new intjs.uint8_t(this.length);
 	for(i = 0; i < u8.byteLength; i++){
 		u8[i] = this.charCodeAt(i);
 	}
@@ -132,33 +150,33 @@ var RWView = function RWView(buffer, byteOffset, byteLength)
 	}
 
 	if(this.byteOffset && this.byteLength) {
-		buffer = new uint8_t(buffer).slice(byteOffset, byteLength).buffer;
+		buffer = new intjs.uint8_t(buffer).slice(byteOffset, byteLength).buffer;
 	}
 
 	var _size = this.buffer.byteLength;
-	var _unaligned = function(x){return (x % sizeof(uint64_t) != 0); };
+	var _unaligned = function(x){return (x % sizeof(intjs.uint64_t) != 0); };
 	if(_unaligned(_size))
 	{
 		while(_unaligned(_size))
 		{
 			_size++;
 		}
-		var _tmp = new uint8_t(malloc(_size));
-		_tmp.set(new uint8_t(this.buffer));
+		var _tmp = new intjs.uint8_t(malloc(_size));
+		_tmp.set(new intjs.uint8_t(this.buffer));
 		this.buffer = _tmp.buffer;
 	}
 
 	this.view = new DataView(this.buffer);
-	this.i64 = new int64_t(this.buffer);
-	this.f64 = new float(this.buffer);
-	this.f32 = new float32(this.buffer);
-	this.i32 = new int32_t(this.buffer);
+	this.i64 = new intjs.int64_t(this.buffer);
+	this.f64 = new intjs.float(this.buffer);
+	this.f32 = new intjs.float32(this.buffer);
+	this.i32 = new intjs.int32_t(this.buffer);
 	this.i16 = new int16_t(this.buffer);
-	this.i8 = new int8_t(this.buffer);
-	this.u64 = new uint64_t(this.buffer);
-	this.u32 = new uint32_t(this.buffer);
-	this.u16 = new uint16_t(this.buffer);
-	this.u8 = new uint8_t(this.buffer);
+	this.i8 = new intjs.int8_t(this.buffer);
+	this.u64 = new intjs.uint64_t(this.buffer);
+	this.u32 = new intjs.uint32_t(this.buffer);
+	this.u16 = new intjs.uint16_t(this.buffer);
+	this.u8 = new intjs.uint8_t(this.buffer);
 
 	this.ptr = 0;
 	this.lsb = true;
