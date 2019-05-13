@@ -170,7 +170,7 @@ LZSSDec.tryFindCompHeader = function(data)
 	return fseek(data, new TextEncoder().encode('complzss'), 0x1000);
 };
 
-LZSSDec.dectect = function(data)
+LZSSDec.detect = function(data)
 {
 	var pos = LZSSDec.tryFindCompHeader(data);
 	if(pos < 0) {
