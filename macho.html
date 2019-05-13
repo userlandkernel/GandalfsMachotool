@@ -113,7 +113,7 @@
 							stdout.status.innerText = 'We got a compressed kernelcache, decompressing it...';
 							alert('Feeding me a compressed kernelcache? No problem we got lzssdec!');
 							var filesize = new ArrayBuffer(sizeof(Uint32Array));
-							window.lzss_src = LZSSDec.prototype.tryLZSS(buf.buffer, new Uint32Array(filesize), stdout.status).asString();
+							window.lzss_src = new LZSSDec().tryLZSS(buf.buffer, new Uint32Array(filesize), stdout.status).asString();
 							window.lzss_dst = lzjs.decompress(window.lzss_src).asArrayBuffer();
 							window.mtool = new MachoTool(filename, new Uint8Array(window.lzss_dst));
 							if(window.mtool.macho.header.magic != 0xfeedface && window.mtool.macho.header.magic != 0xfeedfacf && window.mtool.macho.header.magic != 0xcffaedfe && window.mtool.macho.header.magic != 0xcefaedfe){
